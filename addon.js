@@ -1,9 +1,11 @@
-const { addonBuilder } = require('stremio-addon-sdk');
-const { kv } = require('@vercel/kv');
+import { addonBuilder } from 'stremio-addon-sdk';
+import { kv } from '@vercel/kv';
+import fetch from 'node-fetch';
 
+// ========== Manifest ==========
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '3.0.0-debug', // גרסת דיבאג
+    version: '4.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
@@ -21,6 +23,7 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
+// ========== פונקציית עזר - המרה לפורמט Stremio ==========
 function episodeToMeta(episode, index) {
     if (!episode || !episode.ids) return null;
     return {
@@ -35,45 +38,60 @@ function episodeToMeta(episode, index) {
     };
 }
 
-builder.defineCatalogHandler(async ({ type, id, extra }) => {
-    const startTime = Date.now();
-    console.log(`[${startTime}] HANDLER STARTED.`);
+// ========== לוגיקת שליפת נתונים ==========
+let allEpisodesCache = null; // מטמון מקומי בזיכרון למניעת הורדות מיותרות
+let lastFetchTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 דקות
 
-    if (type !== 'series' || id !== 'shuffled-episodes') {
-        return { metas: [] };
+async function getShuffledEpisodes() {
+    const now = Date.now();
+    // אם יש מטמון והוא לא ישן מדי, החזר אותו מיד
+    if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) {
+        console.log('Returning episodes from in-memory cache.');
+        return allEpisodesCache;
     }
 
+    console.log('Fetching blob URL from KV store...');
+    const blobUrl = await kv.get('episodes_blob_url');
+    if (!blobUrl) throw new Error('Blob URL not found. Cron job may not have run yet.');
+
+    console.log(`Fetching episode data from Blob URL: ${blobUrl}`);
+    const response = await fetch(blobUrl);
+    if (!response.ok) throw new Error(`Failed to fetch episode blob: ${response.statusText}`);
+    
+    const episodes = await response.json();
+    
+    // שמירת הנתונים והזמן במטמון
+    allEpisodesCache = episodes;
+    lastFetchTime = now;
+    
+    console.log(`Successfully fetched and cached ${episodes.length} episodes.`);
+    return episodes;
+}
+
+// ========== Catalog Handler ==========
+builder.defineCatalogHandler(async ({ type, id, extra }) => {
     try {
         const skip = parseInt(extra.skip) || 0;
-        const limit = 20;
-        const stop = skip + limit - 1;
+        const limit = 50; // ניתן לשחק עם הערך הזה
 
-        console.log(`[${Date.now() - startTime}ms] STEP 1: Fetching range ${skip}-${stop} from KV.`);
-        const paginatedEpisodeStrings = await kv.lrange('shuffled-episodes', skip, stop);
-        console.log(`[${Date.now() - startTime}ms] STEP 2: KV fetch completed. Found ${paginatedEpisodeStrings?.length || 0} items.`);
+        // הורדת כל רשימת הפרקים (מהמטמון או מהרשת)
+        const allEpisodes = await getShuffledEpisodes();
+        
+        // חיתוך "העמוד" הרלוונטי מהרשימה
+        const paginatedEpisodes = allEpisodes.slice(skip, skip + limit);
 
-        if (!paginatedEpisodeStrings || paginatedEpisodeStrings.length === 0) {
-            console.log(`[${Date.now() - startTime}ms] No episodes found, returning empty.`);
-            return { metas: [] };
-        }
+        // המרה לפורמט של Stremio
+        const metas = paginatedEpisodes
+            .map((ep, idx) => episodeToMeta(ep, skip + idx))
+            .filter(Boolean); // סינון תוצאות null אם היו
 
-        console.log(`[${Date.now() - startTime}ms] STEP 3: Starting JSON.parse loop.`);
-        const parsedEpisodes = paginatedEpisodeStrings.map(epString => JSON.parse(epString));
-        console.log(`[${Date.now() - startTime}ms] STEP 4: JSON.parse loop finished.`);
-
-        console.log(`[${Date.now() - startTime}ms] STEP 5: Starting episodeToMeta map loop.`);
-        const metas = parsedEpisodes
-            .map((epObject, idx) => episodeToMeta(epObject, skip + idx))
-            .filter(meta => meta !== null);
-        console.log(`[${Date.now() - startTime}ms] STEP 6: episodeToMeta map finished.`);
-
-        console.log(`[${Date.now() - startTime}ms] HANDLER FINISHED SUCCESSFULLY. Returning ${metas.length} metas.`);
         return { metas };
 
     } catch (error) {
-        console.error(`[${Date.now() - startTime}ms] FATAL ERROR in Catalog Handler:`, error);
+        console.error('Error in Catalog Handler:', error);
         return { metas: [] };
     }
 });
 
-module.exports = builder.getInterface();
+export default builder.getInterface();
