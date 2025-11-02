@@ -185,18 +185,4 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
 });
 
 // ========== הפעלת השרת ==========
-const PORT = process.env.PORT || 7000;
-
-serveHTTP(builder.getInterface(), { port: PORT })
-    .then(() => {
-        console.log('🎬 Stremio Sitcom Shuffle Addon is running!');
-        console.log(`📡 Listening on http://localhost:${PORT}/manifest.json`);
-        console.log(`\n⚙️  Configuration:`);
-        console.log(`   - Trakt User: ${CONFIG.TRAKT_USERNAME}`);
-        console.log(`   - List: ${CONFIG.TRAKT_LIST_SLUG}`);
-        console.log(`   - Shuffle refresh: every ${CONFIG.SHUFFLE_REFRESH / 3600000} hours`);
-    })
-    .catch(err => {
-        console.error('❌ Failed to start addon:', err);
-        process.exit(1);
-    });
+module.exports = builder.getInterface();
