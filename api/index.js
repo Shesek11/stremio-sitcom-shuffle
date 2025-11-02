@@ -1,47 +1,51 @@
+const { kv } = require('@vercel/kv');
+const fetch = require('node-fetch');
+
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '12.0.0',
+    version: '15.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ 
-        type: 'series', // שינוי מ-movie ל-series
+        type: 'series',
         id: 'shuffled-episodes', 
         name: 'Shuffled Sitcom Episodes' 
     }],
-    resources: ['catalog', 'meta'], // הוספת meta resource
-    types: ['series'], // שינוי מ-movie ל-series
-    idPrefixes: ['tt']
+    resources: ['catalog'], // רק catalog, בלי meta
+    types: ['series'],
+    idPrefixes: ['tt'] // IMDB IDs
 };
 
 function episodeToMeta(episode, index) {
-    if (!episode || !episode.ids || !episode.showIds || !episode.showIds.imdb) return null;
+    if (!episode || !episode.showIds || !episode.showIds.imdb) return null;
     
-    // יצירת ID ייחודי עבור הפרק הספציפי הזה
-    const uniqueId = `${episode.showIds.imdb}:${episode.season}:${episode.episode}:${index}`;
-    
+    // פשוט החזר את ה-IMDB ID של הסדרה + מספרי עונה ופרק
+    // סטרמיו ימשוך את כל המטא-דאטה מ-TMDB
     return {
-        id: uniqueId,
-        type: 'series',
-        name: episode.showTitle, // שם הסדרה
-        poster: episode.showPoster || 'https://via.placeholder.com/300x450?text=No+Poster',
-        background: episode.showFanart || episode.showPoster,
-        description: episode.showOverview || `A random episode from ${episode.showTitle}`,
-        releaseInfo: episode.year?.toString(),
-        
-        // מידע על הפרק הספציפי
-        videos: [{
-            id: uniqueId,
-            title: episode.title || `Episode ${episode.episode}`,
-            season: episode.season,
-            episode: episode.episode,
-            released: episode.firstAired || new Date().toISOString(),
-            overview: episode.overview || '',
-            thumbnail: episode.thumbnail || episode.showPoster
-        }]
+        id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
+        type: 'series'
     };
 }
 
-// הוספת handler ל-meta resource
+let allEpisodesCache = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000;
+
+async function getShuffledEpisodes() {
+    const now = Date.now();
+    if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) { 
+        return allEpisodesCache; 
+    }
+    const blobUrl = await kv.get('episodes_blob_url');
+    if (!blobUrl) throw new Error('Blob URL not found. Cron job may not have run yet.');
+    const response = await fetch(blobUrl);
+    if (!response.ok) throw new Error(`Failed to fetch episode blob: ${response.statusText}`);
+    const episodes = await response.json();
+    allEpisodesCache = episodes;
+    lastFetchTime = now;
+    return episodes;
+}
+
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
@@ -54,7 +58,6 @@ module.exports = async (req, res) => {
         return res.send(JSON.stringify(manifest));
     }
     
-    // Handler לקטלוג
     if (pathParts[1] === 'catalog' && pathParts[2] === 'series' && 
         pathParts[3]?.startsWith('shuffled-episodes')) {
         try {
@@ -70,31 +73,6 @@ module.exports = async (req, res) => {
             console.error("Error in catalog handler:", error);
             return res.status(500).send(JSON.stringify({ error: error.message }));
         }
-    }
-    
-    // Handler למטא-דאטה של פרק ספציפי
-    if (pathParts[1] === 'meta' && pathParts[2] === 'series') {
-        const id = pathParts[3]?.replace('.json', '');
-        if (id) {
-            try {
-                const allEpisodes = await getShuffledEpisodes();
-                const [showId, season, episode, index] = id.split(':');
-                const foundEpisode = allEpisodes.find((ep, idx) => 
-                    ep.showIds?.imdb === showId && 
-                    ep.season === parseInt(season) && 
-                    ep.episode === parseInt(episode) &&
-                    idx === parseInt(index)
-                );
-                
-                if (foundEpisode) {
-                    const meta = episodeToMeta(foundEpisode, parseInt(index));
-                    return res.send(JSON.stringify({ meta }));
-                }
-            } catch (error) {
-                console.error("Error in meta handler:", error);
-            }
-        }
-        return res.status(404).send(JSON.stringify({ error: 'Meta not found' }));
     }
     
     return res.status(404).send(JSON.stringify({ error: 'Not Found' }));
