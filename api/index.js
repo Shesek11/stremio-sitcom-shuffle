@@ -1,6 +1,6 @@
-import { serveHTTP } from 'stremio-addon-sdk';
-import addonInterface from '../addon.js';
+const { serveHTTP } = require('stremio-addon-sdk');
+const addonInterface = require('../addon.js');
 
-export default function handler(req, res) {
+module.exports = (req, res) => {
     serveHTTP(addonInterface, { req, res });
-}
+};
