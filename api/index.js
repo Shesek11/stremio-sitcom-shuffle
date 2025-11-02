@@ -1,8 +1,6 @@
-const { serveHTTP } = require('stremio-addon-sdk');
-const addonInterface = require('../addon.js');
+import { serveHTTP } from 'stremio-addon-sdk';
+import addonInterface from '../addon.js';
 
-// Vercel מצפה לפונקציה שמקבלת request ו-response
-// serveHTTP מהספרייה יודעת לעשות בדיוק את זה
-module.exports = (req, res) => {
+export default function handler(req, res) {
     serveHTTP(addonInterface, { req, res });
-};
+}
