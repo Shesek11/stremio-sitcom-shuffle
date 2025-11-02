@@ -1,7 +1,8 @@
-const { kv } = require('@vercel/kv');
-const fetch = require('node-fetch');
+import { put } from '@vercel/blob';
+import { kv } from '@vercel/kv';
+import fetch from 'node-fetch';
 
-// ========== הגדרות - קריאה ממשתני הסביבה ב-Vercel ==========
+// ========== הגדרות ==========
 const CONFIG = {
     TRAKT_USERNAME: process.env.TRAKT_USERNAME,
     TRAKT_LIST_SLUG: process.env.TRAKT_LIST_SLUG,
@@ -82,33 +83,33 @@ function shuffleArray(array) {
     return shuffled;
 }
 
-// ========== הפונקציה הראשית ש-Vercel מריצה ==========
-module.exports = async (req, res) => {
+// ========== הפונקציה הראשית (Handler) ==========
+export default async function handler(req, res) {
     try {
         console.log('Cron Job Started: Fetching and shuffling episodes.');
         const allEpisodes = await getAllEpisodes();
-        if (allEpisodes.length === 0) throw new Error("No episodes found, aborting.");
-        
         const shuffledEpisodes = shuffleArray(allEpisodes);
-        console.log(`Shuffled ${shuffledEpisodes.length} episodes.`);
+        console.log(`Fetched and shuffled ${shuffledEpisodes.length} episodes.`);
 
-        console.log('Deleting old episode list from KV...');
-        await kv.del('shuffled-episodes');
-
-        console.log('Saving new episode list to KV using RPUSH...');
-        await kv.rpush('shuffled-episodes', ...shuffledEpisodes);
+        const jsonContent = JSON.stringify(shuffledEpisodes);
         
-        console.log('Successfully saved shuffled episodes to Vercel KV.');
+        console.log('Uploading shuffled list to Vercel Blob...');
+        // העלאת הקובץ ל-Blob. הוא יהיה זמין לכולם לקריאה.
+        const blob = await put('shuffled-episodes.json', jsonContent, {
+            access: 'public',
+            contentType: 'application/json',
+            // הוספת cache control כדי לוודא שנקבל תמיד את הגרסה האחרונה
+            cacheControl: 'max-age=0, no-cache, no-store, must-revalidate'
+        });
+        console.log('Upload complete. Blob URL:', blob.url);
 
-        res.status(200).json({ 
-            message: 'Cron job completed successfully.',
-            episodeCount: shuffledEpisodes.length 
-        });
+        // שמירת ה-URL העדכני ב-KV, כדי שהתוסף הראשי יידע מאיפה למשוך את הקובץ
+        await kv.set('episodes_blob_url', blob.url);
+        
+        res.status(200).json({ message: 'Success', url: blob.url, count: shuffledEpisodes.length });
+
     } catch (error) {
-        console.error('An error occurred during the cron job:', error);
-        res.status(500).json({ 
-            message: 'Cron job failed.',
-            error: error.message 
-        });
+        console.error('Cron job failed:', error);
+        res.status(500).json({ message: 'Failed', error: error.message });
     }
-};
+}
