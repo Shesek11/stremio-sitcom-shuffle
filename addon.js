@@ -4,7 +4,7 @@ const { kv } = require('@vercel/kv');
 // ========== Manifest - מידע על ה-Addon ==========
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '1.0.0', // אפשר לשקול לעדכן גרסה ל-2.0.0 אחרי שינוי כה גדול
+    version: '2.0.0', // עדכנתי גרסה לציון השינוי הגדול
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
@@ -23,7 +23,6 @@ const manifest = {
 const builder = new addonBuilder(manifest);
 
 // ========== פונקציית עזר - המרת פרק לפורמט Stremio ==========
-// פונקציה זו נשארת כאן כי אנחנו עדיין צריכים אותה כדי להציג את המידע
 function episodeToMeta(episode, index) {
     return {
         id: `tt${episode.ids.imdb || episode.ids.trakt}`,
@@ -37,29 +36,28 @@ function episodeToMeta(episode, index) {
     };
 }
 
-// ========== Catalog Handler ==========
+// ========== Catalog Handler - הגרסה החדשה והיעילה ==========
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
     if (type !== 'series' || id !== 'shuffled-episodes') {
         return { metas: [] };
     }
 
-    console.log('Fetching shuffled episodes from KV store...');
     try {
-        // שלב 1: שליפה מהירה של כל רשימת הפרקים ממסד הנתונים
-        const episodesCache = await kv.get('shuffled-episodes');
+        const skip = parseInt(extra.skip) || 0;
+        const limit = 100;
+        // אינדקס הסיום. lrange כולל את האינדקס האחרון.
+        const stop = skip + limit - 1; 
 
-        // אם המטמון ריק (למשל, ה-cron job עוד לא רץ), החזר רשימה ריקה
-        if (!episodesCache || episodesCache.length === 0) {
-            console.log('Cache is empty. Waiting for the cron job to run.');
+        console.log(`Fetching page from KV. Range: ${skip} to ${stop}`);
+        
+        // שימוש ב-lrange כדי למשוך רק את הטווח (העמוד) שאנו צריכים
+        const paginatedEpisodes = await kv.lrange('shuffled-episodes', skip, stop);
+
+        if (!paginatedEpisodes || paginatedEpisodes.length === 0) {
+            console.log('No episodes found for this page or cache is empty.');
             return { metas: [] };
         }
 
-        // שלב 2: Pagination על הרשימה שהתקבלה
-        const skip = parseInt(extra.skip) || 0;
-        const limit = 100; // אפשר להגדיר מספר קטן יותר אם רוצים
-        const paginatedEpisodes = episodesCache.slice(skip, skip + limit);
-
-        // שלב 3: המרת הפרקים לפורמט ש-Stremio מבין
         const metas = paginatedEpisodes.map((ep, idx) =>
             episodeToMeta(ep, skip + idx)
         );
@@ -68,7 +66,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
 
     } catch (error) {
         console.error('Error fetching episodes from KV store:', error);
-        return { metas: [] }; // החזר רשימה ריקה במקרה של שגיאה
+        return { metas: [] };
     }
 });
 
