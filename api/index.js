@@ -1,18 +1,16 @@
 const { kv } = require('@vercel/kv');
 const fetch = require('node-fetch');
 
+// המניפסט מגדיר קטלוג מסוג 'movie' עם ה-ID היציב
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '8.1.0', // הגרסה המתוקנת
+    version: '9.0.0', // הגרסה הסופית
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
         {
             type: 'movie',
-            // ===================================================================
-            // ========== שינוי 1: חזרנו ל-ID שעבד ==========
-            id: 'shuffled-episodes',
-            // ===================================================================
+            id: 'shuffled-episodes', // ה-ID היציב
             name: 'Shuffled Sitcom Episodes'
         }
     ],
@@ -21,9 +19,9 @@ const manifest = {
     idPrefixes: ['tt']
 };
 
+// פונקציה שמייצרת אובייקט 'movie'
 function episodeToMeta(episode, index) {
     if (!episode || !episode.ids || !episode.showIds || !episode.showIds.imdb) return null;
-    
     return {
         id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
         type: 'movie',
@@ -34,16 +32,14 @@ function episodeToMeta(episode, index) {
     };
 }
 
-// ... (שאר הקוד: getShuffledEpisodes נשאר זהה לחלוטין)
+// ... (פונקציית getShuffledEpisodes נשארת זהה לחלוטין)
 let allEpisodesCache = null;
 let lastFetchTime = 0;
 const CACHE_DURATION = 5 * 60 * 1000;
 
 async function getShuffledEpisodes() {
     const now = Date.now();
-    if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) {
-        return allEpisodesCache;
-    }
+    if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) { return allEpisodesCache; }
     const blobUrl = await kv.get('episodes_blob_url');
     if (!blobUrl) throw new Error('Blob URL not found. Cron job may not have run yet.');
     const response = await fetch(blobUrl);
@@ -54,38 +50,56 @@ async function getShuffledEpisodes() {
     return episodes;
 }
 
-// Handler ראשי
+// ===================================================================
+// ========== Handler ראשי עם נתב חכם ורישום מלא ==========
+// ===================================================================
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Content-Type', 'application/json');
 
-    const path = req.url.split('?')[0];
+    // שלב 1: רישום מלא של כל בקשה נכנסת
+    console.log(`[REQUEST RECEIVED] Full URL: ${req.url}`);
 
+    const path = req.url.split('?')[0];
+    const pathParts = path.split('/'); // לדוגמה: ['', 'catalog', 'movie', 'shuffled-episodes.json']
+
+    // טיפול בבקשת המניפסט
     if (path === '/manifest.json') {
+        console.log('[ROUTER] Matched /manifest.json');
         return res.send(JSON.stringify(manifest));
     }
 
-    // ===================================================================
-    // ========== שינוי 2: הנתב תואם עכשיו ל-ID הישן ==========
-    if (path.startsWith('/catalog/movie/shuffled-episodes')) {
-    // ===================================================================
-        try {
-            const skip = parseInt(req.query.skip) || 0;
-            const limit = 50;
+    // טיפול בבקשות קטלוג
+    if (pathParts[1] === 'catalog' && pathParts.length >= 4) {
+        const type = pathParts[2]; // 'movie' או 'series' וכו'
+        const id = pathParts[3].replace('.json', '');
+        
+        console.log(`[ROUTER] Parsed catalog request. Type: "${type}", ID: "${id}"`);
 
-            const allEpisodes = await getShuffledEpisodes();
-            const paginatedEpisodes = allEpisodes.slice(skip, skip + limit);
-            const metas = paginatedEpisodes
-                .map((ep, idx) => episodeToMeta(ep, skip + idx))
-                .filter(Boolean);
+        // נגיב רק ל-ID שלנו, לא משנה מה ה-type ש-Stremio ביקש (חסין לבעיות מטמון)
+        if (id === 'shuffled-episodes') {
+            console.log('[ROUTER] Matched catalog ID "shuffled-episodes". Processing...');
+            try {
+                const skip = parseInt(req.query.skip) || 0;
+                const limit = 50;
 
-            return res.send(JSON.stringify({ metas }));
-        } catch (error) {
-            console.error("Error in catalog handler:", error);
-            return res.status(500).send(JSON.stringify({ error: error.message }));
+                const allEpisodes = await getShuffledEpisodes();
+                const paginatedEpisodes = allEpisodes.slice(skip, skip + limit);
+                const metas = paginatedEpisodes
+                    .map((ep, idx) => episodeToMeta(ep, skip + idx))
+                    .filter(Boolean);
+
+                console.log(`[ROUTER] Success. Returning ${metas.length} metas.`);
+                return res.send(JSON.stringify({ metas }));
+            } catch (error) {
+                console.error("[ROUTER] Error in catalog handler:", error);
+                return res.status(500).send(JSON.stringify({ error: error.message }));
+            }
         }
     }
 
+    // אם הבקשה לא זוהתה, נרשום אותה ונחזיר 404
+    console.log(`[ROUTER] No match found for path: "${path}". Returning 404.`);
     return res.status(404).send(JSON.stringify({ error: 'Not Found' }));
 };
