@@ -1,11 +1,11 @@
-import { addonBuilder } from 'stremio-addon-sdk';
-import { kv } from '@vercel/kv';
-import fetch from 'node-fetch';
+const { addonBuilder } = require('stremio-addon-sdk');
+const { kv } = require('@vercel/kv');
+const fetch = require('node-fetch');
 
 // ========== Manifest ==========
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '4.0.0',
+    version: '5.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
@@ -45,7 +45,6 @@ const CACHE_DURATION = 5 * 60 * 1000; // 5 דקות
 
 async function getShuffledEpisodes() {
     const now = Date.now();
-    // אם יש מטמון והוא לא ישן מדי, החזר אותו מיד
     if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) {
         console.log('Returning episodes from in-memory cache.');
         return allEpisodesCache;
@@ -61,7 +60,6 @@ async function getShuffledEpisodes() {
     
     const episodes = await response.json();
     
-    // שמירת הנתונים והזמן במטמון
     allEpisodesCache = episodes;
     lastFetchTime = now;
     
@@ -73,18 +71,13 @@ async function getShuffledEpisodes() {
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
     try {
         const skip = parseInt(extra.skip) || 0;
-        const limit = 50; // ניתן לשחק עם הערך הזה
+        const limit = 50;
 
-        // הורדת כל רשימת הפרקים (מהמטמון או מהרשת)
         const allEpisodes = await getShuffledEpisodes();
-        
-        // חיתוך "העמוד" הרלוונטי מהרשימה
         const paginatedEpisodes = allEpisodes.slice(skip, skip + limit);
-
-        // המרה לפורמט של Stremio
         const metas = paginatedEpisodes
             .map((ep, idx) => episodeToMeta(ep, skip + idx))
-            .filter(Boolean); // סינון תוצאות null אם היו
+            .filter(Boolean);
 
         return { metas };
 
@@ -94,4 +87,4 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
     }
 });
 
-export default builder.getInterface();
+module.exports = builder.getInterface();
