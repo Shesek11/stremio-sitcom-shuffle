@@ -1,0 +1,25 @@
+{
+  "name": "stremio-sitcom-shuffle",
+  "version": "1.0.0",
+  "description": "Stremio addon for shuffled sitcom episodes from Trakt lists",
+  "main": "addon.js",
+  "scripts": {
+    "start": "node addon.js"
+  },
+  "keywords": [
+    "stremio",
+    "addon",
+    "trakt",
+    "shuffle",
+    "sitcom"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "stremio-addon-sdk": "^1.6.9",
+    "node-fetch": "^2.6.7"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
