@@ -1,16 +1,27 @@
 {
-  "name": "stremio-trakt-random-episodes",
-  "version": "1.0.0",
-  "description": "Stremio addon for random episodes from Trakt lists",
+  "name": "stremio-sitcom-shuffle",
+  "version": "12.0.0",
+  "description": "Stremio addon for shuffled sitcom episodes from Trakt lists",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
+  "keywords": [
+    "stremio",
+    "addon",
+    "trakt",
+    "shuffle",
+    "sitcom"
+  ],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
-    "stremio-addon-sdk": "^1.6.8",
-    "axios": "^1.6.0"
+    "@vercel/blob": "latest",
+    "@vercel/kv": "latest",
+    "node-fetch": "^2.6.7",
+    "stremio-addon-sdk": "^1.6.9"
   },
   "engines": {
-    "node": ">=14.x"
+    "node": ">=16.0.0"
   }
 }
