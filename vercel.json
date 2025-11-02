@@ -1,14 +1,12 @@
 {
-  "rewrites": [
-    {
-      "source": "/:path*",
-      "destination": "/api/index"
-    }
-  ],
-  "crons": [
-    {
-      "path": "/api/cron",
-      "schedule": "0 5 * * *"
-    }
-  ]
+  "name": "stremio-sitcom-shuffle",
+  "version": "1.0.0",
+  "description": "Stremio addon for shuffled sitcom episodes from Trakt lists",
+  "dependencies": {
+    "@vercel/blob": "latest",
+    "@vercel/kv": "latest",
+    "node-fetch": "^2.6.7",
+    "stremio-addon-sdk": "^1.6.9"
+  },
+  "engines": { "node": ">=14.0.0" }
 }
