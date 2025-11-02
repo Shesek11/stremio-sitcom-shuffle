@@ -2,12 +2,10 @@
 const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
 const axios = require('axios');
 
-// Trakt API Configuration
+// Trakt API Configuration - רק Client ID נדרש!
 const TRAKT_CLIENT_ID = process.env.TRAKT_CLIENT_ID;
-const TRAKT_CLIENT_SECRET = process.env.TRAKT_CLIENT_SECRET;
-const TRAKT_ACCESS_TOKEN = process.env.TRAKT_ACCESS_TOKEN;
-const TRAKT_LIST_ID = process.env.TRAKT_LIST_ID || 'default-list';
-const TRAKT_USERNAME = process.env.TRAKT_USERNAME || 'me';
+const TRAKT_USERNAME = process.env.TRAKT_USERNAME; // שם המשתמש שלך ב-Trakt
+const TRAKT_LIST_SLUG = process.env.TRAKT_LIST_SLUG; // שם הרשימה (מה-URL)
 
 // Cache למניעת קריאות מיותרות
 let episodesCache = null;
@@ -40,58 +38,45 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-// פונקציה לשליפת רשימות מ-Trakt
-async function getTraktLists(accessToken) {
-  try {
-    const response = await axios.get(`https://api.trakt.tv/users/${TRAKT_USERNAME}/lists`, {
-      headers: {
-        'Content-Type': 'application/json',
-        'trakt-api-version': '2',
-        'trakt-api-key': TRAKT_CLIENT_ID,
-        'Authorization': `Bearer ${accessToken}`
-      }
-    });
-    return response.data;
-  } catch (error) {
-    console.error('Error fetching Trakt lists:', error.message);
-    throw error;
-  }
-}
+// Headers בסיסיים לכל קריאה (רק עם Client ID - בלי OAuth!)
+const getTraktHeaders = () => ({
+  'Content-Type': 'application/json',
+  'trakt-api-version': '2',
+  'trakt-api-key': TRAKT_CLIENT_ID
+});
 
-// פונקציה לשליפת סדרות מרשימה
-async function getListItems(username, listId, accessToken) {
+// פונקציה לשליפת סדרות מרשימה ציבורית (ללא OAuth!)
+async function getListItems(username, listSlug) {
   try {
+    console.log(`Fetching list: ${username}/lists/${listSlug}`);
+    
     const response = await axios.get(
-      `https://api.trakt.tv/users/${username}/lists/${listId}/items/shows`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'trakt-api-version': '2',
-          'trakt-api-key': TRAKT_CLIENT_ID,
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
+      `https://api.trakt.tv/users/${username}/lists/${listSlug}/items/shows`,
+      { headers: getTraktHeaders() }
     );
+    
+    console.log(`Found ${response.data.length} shows`);
     return response.data;
   } catch (error) {
-    console.error('Error fetching list items:', error.message);
+    console.error('Error fetching list items:', error.response?.status, error.response?.data || error.message);
+    
+    if (error.response?.status === 404) {
+      throw new Error(`הרשימה "${listSlug}" לא נמצאה. ודא שהרשימה ציבורית ושהשם נכון.`);
+    }
+    if (error.response?.status === 401) {
+      throw new Error('Client ID לא תקין. בדוק את TRAKT_CLIENT_ID ב-Vercel.');
+    }
+    
     throw error;
   }
 }
 
-// פונקציה לשליפת פרטי פרקים של סדרה
-async function getShowSeasons(showId, accessToken) {
+// פונקציה לשליפת פרטי פרקים של סדרה (ללא OAuth!)
+async function getShowSeasons(showId) {
   try {
     const response = await axios.get(
       `https://api.trakt.tv/shows/${showId}/seasons?extended=episodes`,
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'trakt-api-version': '2',
-          'trakt-api-key': TRAKT_CLIENT_ID,
-          'Authorization': `Bearer ${accessToken}`
-        }
-      }
+      { headers: getTraktHeaders() }
     );
     return response.data.filter(season => season.number > 0); // מסנן את העונה 0 (ספיישלים)
   } catch (error) {
@@ -119,9 +104,13 @@ async function getAllEpisodes(forceRefresh = false) {
   console.log('Fetching fresh episodes from Trakt...');
   
   try {
+    // בדיקת הגדרות
+    if (!TRAKT_USERNAME || !TRAKT_LIST_SLUG) {
+      throw new Error('חסרות הגדרות TRAKT_USERNAME או TRAKT_LIST_SLUG');
+    }
+
     // שליפת הסדרות מהרשימה
-    const listItems = await getListItems(TRAKT_USERNAME, TRAKT_LIST_ID, TRAKT_ACCESS_TOKEN);
-    console.log(`Found ${listItems.length} shows in list`);
+    const listItems = await getListItems(TRAKT_USERNAME, TRAKT_LIST_SLUG);
     
     if (listItems.length === 0) {
       console.warn('No shows found in list');
@@ -130,15 +119,17 @@ async function getAllEpisodes(forceRefresh = false) {
     
     // שליפת כל הפרקים מכל הסדרות
     const allEpisodes = [];
+    let processedShows = 0;
     
     for (const item of listItems) {
       if (item.show) {
         const showId = item.show.ids.trakt;
         const showTitle = item.show.title;
-        console.log(`Processing show: ${showTitle}`);
+        processedShows++;
+        console.log(`[${processedShows}/${listItems.length}] Processing: ${showTitle}`);
         
         try {
-          const seasons = await getShowSeasons(showId, TRAKT_ACCESS_TOKEN);
+          const seasons = await getShowSeasons(showId);
           
           // עיבוד הפרקים
           seasons.forEach(season => {
@@ -183,7 +174,7 @@ async function getAllEpisodes(forceRefresh = false) {
       }
     }
     
-    console.log(`Total episodes found: ${allEpisodes.length}`);
+    console.log(`✅ Total episodes found: ${allEpisodes.length} from ${processedShows} shows`);
     
     // שמירה ב-cache
     episodesCache = allEpisodes;
@@ -192,7 +183,7 @@ async function getAllEpisodes(forceRefresh = false) {
     return allEpisodes;
   } catch (error) {
     console.error('Error in getAllEpisodes:', error);
-    return [];
+    throw error;
   }
 }
 
@@ -206,14 +197,26 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
 
   try {
     // בדיקת הגדרות
-    if (!TRAKT_CLIENT_ID || !TRAKT_ACCESS_TOKEN) {
-      console.error('Missing Trakt configuration');
+    if (!TRAKT_CLIENT_ID) {
+      console.error('Missing TRAKT_CLIENT_ID');
       return {
         metas: [{
-          id: 'error',
+          id: 'error-config',
           type: 'series',
           name: '⚠️ שגיאת הגדרות',
-          description: 'חסרות הגדרות Trakt API. אנא הגדר את המשתנים: TRAKT_CLIENT_ID, TRAKT_ACCESS_TOKEN, TRAKT_LIST_ID'
+          description: 'חסר TRAKT_CLIENT_ID. הגדר אותו ב-Vercel Environment Variables.'
+        }]
+      };
+    }
+
+    if (!TRAKT_USERNAME || !TRAKT_LIST_SLUG) {
+      console.error('Missing TRAKT_USERNAME or TRAKT_LIST_SLUG');
+      return {
+        metas: [{
+          id: 'error-config',
+          type: 'series',
+          name: '⚠️ שגיאת הגדרות',
+          description: 'חסרים TRAKT_USERNAME או TRAKT_LIST_SLUG. הגדר אותם ב-Vercel Environment Variables.'
         }]
       };
     }
@@ -227,7 +230,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
           id: 'empty',
           type: 'series',
           name: '📭 אין פרקים',
-          description: `לא נמצאו פרקים ברשימה "${TRAKT_LIST_ID}". ודא שהרשימה מכילה סדרות.`
+          description: `לא נמצאו פרקים ברשימה "${TRAKT_LIST_SLUG}". ודא ש:\n1. הרשימה מכילה סדרות\n2. הרשימה היא ציבורית (Public)\n3. שם המשתמש והרשימה נכונים`
         }]
       };
     }
@@ -235,7 +238,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
     // בחירת פרקים רנדומליים
     const randomEpisodes = getRandomEpisodes(allEpisodes, 50);
     
-    console.log(`Returning ${randomEpisodes.length} random episodes`);
+    console.log(`✅ Returning ${randomEpisodes.length} random episodes`);
     return { metas: randomEpisodes };
   } catch (error) {
     console.error('Error in catalog handler:', error);
@@ -244,7 +247,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
         id: 'error',
         type: 'series',
         name: '❌ שגיאה',
-        description: `אירעה שגיאה: ${error.message}`
+        description: `${error.message}\n\nודא ש:\n• הרשימה היא ציבורית (Public)\n• TRAKT_CLIENT_ID תקין\n• TRAKT_USERNAME נכון\n• TRAKT_LIST_SLUG נכון`
       }]
     };
   }
@@ -289,21 +292,28 @@ builder.defineMetaHandler(async ({ type, id }) => {
 
 // Health check endpoint
 const healthCheck = (req, res) => {
+  const isConfigured = !!(TRAKT_CLIENT_ID && TRAKT_USERNAME && TRAKT_LIST_SLUG);
+  
   res.writeHead(200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({
     status: 'ok',
     addon: 'Trakt Random Episodes',
-    configured: !!(TRAKT_CLIENT_ID && TRAKT_ACCESS_TOKEN),
-    listId: TRAKT_LIST_ID,
-    username: TRAKT_USERNAME,
-    cacheStatus: episodesCache ? `${episodesCache.length} episodes cached` : 'No cache'
-  }));
+    version: '2.0 (No OAuth Required)',
+    configured: isConfigured,
+    config: {
+      clientId: TRAKT_CLIENT_ID ? '✅ Set' : '❌ Missing',
+      username: TRAKT_USERNAME || '❌ Missing',
+      listSlug: TRAKT_LIST_SLUG || '❌ Missing'
+    },
+    cacheStatus: episodesCache ? `${episodesCache.length} episodes cached` : 'No cache',
+    instructions: !isConfigured ? 'Set TRAKT_CLIENT_ID, TRAKT_USERNAME, and TRAKT_LIST_SLUG in Vercel Environment Variables' : null
+  }, null, 2));
 };
 
 // Export for Vercel
 module.exports = (req, res) => {
   // Health check
-  if (req.url === '/health' || req.url === '/') {
+  if (req.url === '/health' || req.url === '/' || req.url === '/health/') {
     return healthCheck(req, res);
   }
   
