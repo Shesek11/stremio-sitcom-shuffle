@@ -36,11 +36,19 @@ async function getShowEpisodes(showSlug) {
     for (const season of seasons) {
         if (season.number === 0) continue;
         for (const episode of season.episodes || []) {
-            episodes.push({
-                showSlug, showTitle: '', season: season.number,
-                episode: episode.number, title: episode.title || `Episode ${episode.number}`,
-                overview: episode.overview || '', ids: episode.ids
-            });
+            // ===================================================================
+            // ========== שינוי קריטי: שומרים רק פרקים שיש להם IMDb ID ==========
+            // ===================================================================
+            if (episode.ids && episode.ids.imdb) {
+                episodes.push({
+                    showTitle: '', 
+                    season: season.number,
+                    episode: episode.number,
+                    title: episode.title || `Episode ${episode.number}`,
+                    overview: episode.overview || '',
+                    ids: episode.ids // שומרים את כל ה-IDs, במיוחד episode.ids.imdb
+                });
+            }
         }
     }
     return episodes;
@@ -52,11 +60,11 @@ async function getAllEpisodesOptimized() {
     console.log(`Found ${shows.length} shows.`);
 
     const allEpisodes = [];
-    const batchSize = 5; // הרצת 5 בקשות במקביל
+    const batchSize = 5;
 
     for (let i = 0; i < shows.length; i += batchSize) {
         const batch = shows.slice(i, i + batchSize);
-        console.log(`Processing batch ${Math.floor(i / batchSize) + 1}... (${batch.map(s => s.title).join(', ')})`);
+        console.log(`Processing batch ${Math.floor(i / batchSize) + 1}...`);
 
         const batchPromises = batch.map(async (show) => {
             const episodes = await getShowEpisodes(show.ids.slug);
@@ -65,9 +73,7 @@ async function getAllEpisodesOptimized() {
                 ep.showYear = show.year;
                 ep.showIds = show.ids;
                 const posterUrl = show.images?.poster?.thumb;
-                const fanartUrl = show.images?.fanart?.thumb;
                 ep.showPoster = posterUrl ? posterUrl.replace('medium.jpg', 'full.jpg') : null;
-                ep.showFanart = fanartUrl ? fanartUrl.replace('medium.jpg', 'full.jpg') : null;
             });
             return episodes;
         });
