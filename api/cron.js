@@ -21,9 +21,11 @@ function getTraktHeaders() {
     };
 }
 
-// בקשת מידע מורחב עם תמונות
+// ===================================================================
+// ========== חזרנו לגרסה הפשוטה ללא בקשת תמונות ==========
+// ===================================================================
 async function getShowsFromList() {
-    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows?extended=images`;
+    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
     const response = await fetch(url, { headers: getTraktHeaders() });
     if (!response.ok) throw new Error(`Failed to fetch Trakt list: ${response.statusText}`);
     const items = await response.json();
@@ -62,25 +64,12 @@ async function getAllEpisodes() {
         const episodes = await getShowEpisodes(show.ids.slug);
         
         // ===================================================================
-        // ========== התיקון הקריטי: קוד חסין תקלות לעיבוד תמונות ==========
+        // ========== הסרנו את כל הלוגיקה של עיבוד התמונות ==========
         // ===================================================================
         episodes.forEach(ep => {
             ep.showTitle = show.title;
             ep.showYear = show.year;
             ep.showIds = show.ids;
-
-            // בדוק אם מידע על תמונות בכלל קיים
-            if (show.images && show.images.poster && show.images.poster.thumb) {
-                ep.showPoster = show.images.poster.thumb.replace('medium.jpg', 'full.jpg');
-            } else {
-                ep.showPoster = null; // אם אין, הגדר במפורש ל-null
-            }
-
-            if (show.images && show.images.fanart && show.images.fanart.thumb) {
-                ep.showFanart = show.images.fanart.thumb.replace('medium.jpg', 'full.jpg');
-            } else {
-                ep.showFanart = null; // אם אין, הגדר במפורש ל-null
-            }
         });
         
         allEpisodes.push(...episodes);
