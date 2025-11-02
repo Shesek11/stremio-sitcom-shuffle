@@ -1,0 +1,16 @@
+{
+  "name": "stremio-trakt-random-episodes",
+  "version": "1.0.0",
+  "description": "Stremio addon for random episodes from Trakt lists",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "stremio-addon-sdk": "^1.6.8",
+    "axios": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=14.x"
+  }
+}
