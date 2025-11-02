@@ -49,7 +49,7 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
 
     try {
         const skip = parseInt(extra.skip) || 0;
-        const limit = 100;
+        const limit = 20;
         const stop = skip + limit - 1; 
 
         console.log(`Fetching page of episode STRINGS from KV. Range: ${skip} to ${stop}`);
