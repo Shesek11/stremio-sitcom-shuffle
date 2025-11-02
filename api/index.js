@@ -4,7 +4,7 @@ const fetch = require('node-fetch');
 // אובייקט המניפסט
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '6.1.0', // הגרסה היציבה
+    version: '6.2.0', // הגרסה הסופית באמת
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
@@ -19,15 +19,19 @@ const manifest = {
     idPrefixes: ['tt']
 };
 
-// פונקציית עזר להמרת פרק
+// ===================================================================
+// ========== פונקציית עזר להמרת פרק - הגרסה המתוקנת ==========
+// ===================================================================
 function episodeToMeta(episode, index) {
-    if (!episode || !episode.ids) return null;
+    if (!episode || !episode.ids || !episode.showIds || !episode.showIds.imdb) return null;
     return {
-        id: `tt${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
+        // התיקון: הסרנו את ה-"tt" המיותר. המשתנה כבר מכיל אותו.
+        id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
         type: 'series',
         name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
-        poster: `https://via.placeholder.com/300x450/1a1a2e/16213e?text=${encodeURIComponent(episode.showTitle)}`,
-        background: `https://via.placeholder.com/1920x1080/1a1a2e/16213e?text=${encodeURIComponent(episode.showTitle)}`,
+        // התיקון: הסרנו את ה-"tt" המיותר גם מכאן
+        poster: episode.showIds.imdb,
+        background: episode.showIds.imdb,
         description: `${episode.title}\n\n${episode.overview}\n\n📺 ${episode.showTitle} (${episode.showYear})\n🎲 Shuffle Position: ${index + 1}`,
         releaseInfo: `S${episode.season}E${episode.episode}`,
         genres: ['Comedy', 'Sitcom']
@@ -54,31 +58,22 @@ async function getShuffledEpisodes() {
     return episodes;
 }
 
-// ===================================================================
-// ========== Handler ראשי עם ניתוב מתוקן ==========
-// ===================================================================
+// Handler ראשי
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Content-Type', 'application/json');
 
-    // קודם כל, ננקה את הכתובת מפרמטרים כדי לקבל את הנתיב הנקי
     const path = req.url.split('?')[0];
-
-    // --- ניתוב מדויק ---
 
     // בקשה למניפסט
     if (path === '/manifest.json') {
-        console.log('Request received for /manifest.json');
         return res.send(JSON.stringify(manifest));
     }
 
     // בקשה לקטלוג
-    // Stremio מבקש כתובת בפורמט: /catalog/{type}/{id}.json
     if (path.startsWith('/catalog/series/shuffled-episodes')) {
-        console.log('Request received for catalog.');
         try {
-            // Vercel מנתח עבורנו את הפרמטרים, אין צורך לנתח את הכתובת ידנית
             const skip = parseInt(req.query.skip) || 0;
             const limit = 50;
 
@@ -96,6 +91,5 @@ module.exports = async (req, res) => {
     }
 
     // אם לא זו ולא זו, החזר 404
-    console.log(`Request for unknown path: ${path}`);
     return res.status(404).send(JSON.stringify({ error: 'Not Found' }));
 };
