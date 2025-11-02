@@ -1,54 +1,41 @@
 const { kv } = require('@vercel/kv');
 const fetch = require('node-fetch');
 
+// ===================================================================
+// ========== שינוי 1: המניפסט מגדיר עכשיו קטלוג של סרטים ==========
+// ===================================================================
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '7.0.0', // הגרסה שעובדת!
+    version: '8.0.0', // הגרסה המנצחת
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
         {
-            type: 'series',
-            id: 'shuffled-episodes',
+            type: 'movie', // שינינו ל-movie
+            id: 'shuffled-sitcom-episodes',
             name: 'Shuffled Sitcom Episodes'
         }
     ],
     resources: ['catalog'],
-    types: ['series'],
+    types: ['movie'], // שינינו ל-movie
     idPrefixes: ['tt']
 };
 
 // ===================================================================
-// ========== פונקציית עזר להמרת פרק - הגרסה הסופית ==========
+// ========== שינוי 2: הפונקציה יוצרת עכשיו אובייקט מסוג "סרט" ==========
 // ===================================================================
 function episodeToMeta(episode, index) {
     if (!episode || !episode.ids || !episode.showIds || !episode.showIds.imdb) return null;
     
-    // זהו אובייקט ה-meta הראשי. הוא מתאר את הסדרה.
-    const seriesMeta = {
-        id: episode.showIds.imdb, // ID של הסדרה
-        type: 'series',
-        name: episode.showTitle, // שם הסדרה
-        poster: episode.showIds.imdb,
-        background: episode.showIds.imdb,
-        posterShape: 'poster',
-        description: `A random episode from ${episode.showTitle}.\n\nThis is episode S${episode.season}E${episode.episode}: "${episode.title}"\n\n${episode.overview}`,
-        
-        // כאן הקסם קורה: אנחנו אומרים ל-Stremio
-        // "בתוך הסדרה הזו, יש רק פרק אחד שמעניין אותנו כרגע"
-        videos: [
-            {
-                id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
-                title: `S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}: ${episode.title}`,
-                season: episode.season,
-                episode: episode.episode,
-                overview: episode.overview
-                // released: episode.first_aired // אפשר להוסיף אם המידע קיים
-            }
-        ]
+    // אובייקט ה-meta מתאר עכשיו "סרט" שהוא בעצם פרק
+    return {
+        id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`, // ID של הפרק
+        type: 'movie', // שינינו ל-movie
+        name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
+        poster: episode.showIds.imdb, // נשתמש בפוסטר של הסדרה
+        background: episode.showIds.imdb, // וברקע של הסדרה
+        description: `This is a random episode from '${episode.showTitle}'.\n\nEpisode Title: "${episode.title}"\n\n${episode.overview}`
     };
-    
-    return seriesMeta;
 }
 
 // ... (שאר הקוד נשאר זהה לחלוטין)
@@ -57,15 +44,6 @@ let lastFetchTime = 0;
 const CACHE_DURATION = 5 * 60 * 1000;
 
 async function getShuffledEpisodes() {
-    // ... (אותה פונקציה כמו קודם)
-}
-
-module.exports = async (req, res) => {
-    // ... (אותו Handler כמו קודם)
-};
-
-// ========= הדבקת שאר הקוד המלא =========
-async function getShuffledEpisodes_impl() {
     const now = Date.now();
     if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) {
         return allEpisodesCache;
@@ -79,9 +57,9 @@ async function getShuffledEpisodes_impl() {
     lastFetchTime = now;
     return episodes;
 }
-getShuffledEpisodes = getShuffledEpisodes_impl; // przypisanie do globalnej zmiennej
 
-module.exports_impl = async (req, res) => {
+// Handler ראשי
+module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Content-Type', 'application/json');
@@ -92,7 +70,8 @@ module.exports_impl = async (req, res) => {
         return res.send(JSON.stringify(manifest));
     }
 
-    if (path.startsWith('/catalog/series/shuffled-episodes')) {
+    // הניתוב בודק עכשיו קטלוג מסוג movie
+    if (path.startsWith('/catalog/movie/shuffled-sitcom-episodes')) {
         try {
             const skip = parseInt(req.query.skip) || 0;
             const limit = 50;
@@ -112,4 +91,3 @@ module.exports_impl = async (req, res) => {
 
     return res.status(404).send(JSON.stringify({ error: 'Not Found' }));
 };
-module.exports = module.exports_impl;
