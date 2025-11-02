@@ -4,7 +4,7 @@ const { kv } = require('@vercel/kv');
 // ========== Manifest - מידע על ה-Addon ==========
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '2.0.0', // עדכנתי גרסה לציון השינוי הגדול
+    version: '2.1.0', // גרסה סופית!
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
@@ -24,6 +24,11 @@ const builder = new addonBuilder(manifest);
 
 // ========== פונקציית עזר - המרת פרק לפורמט Stremio ==========
 function episodeToMeta(episode, index) {
+    // הגנה מפני מקרה שבו אובייקט הפרק לא תקין
+    if (!episode || !episode.ids) {
+        console.error('Invalid episode object passed to episodeToMeta:', episode);
+        return null; 
+    }
     return {
         id: `tt${episode.ids.imdb || episode.ids.trakt}`,
         type: 'series',
@@ -36,7 +41,7 @@ function episodeToMeta(episode, index) {
     };
 }
 
-// ========== Catalog Handler - הגרסה החדשה והיעילה ==========
+// ========== Catalog Handler - הגרסה הסופית והמתוקנת ==========
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
     if (type !== 'series' || id !== 'shuffled-episodes') {
         return { metas: [] };
@@ -45,27 +50,30 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
     try {
         const skip = parseInt(extra.skip) || 0;
         const limit = 100;
-        // אינדקס הסיום. lrange כולל את האינדקס האחרון.
         const stop = skip + limit - 1; 
 
-        console.log(`Fetching page from KV. Range: ${skip} to ${stop}`);
-        
-        // שימוש ב-lrange כדי למשוך רק את הטווח (העמוד) שאנו צריכים
-        const paginatedEpisodes = await kv.lrange('shuffled-episodes', skip, stop);
+        console.log(`Fetching page of episode STRINGS from KV. Range: ${skip} to ${stop}`);
+        const paginatedEpisodeStrings = await kv.lrange('shuffled-episodes', skip, stop);
 
-        if (!paginatedEpisodes || paginatedEpisodes.length === 0) {
+        if (!paginatedEpisodeStrings || paginatedEpisodeStrings.length === 0) {
             console.log('No episodes found for this page or cache is empty.');
             return { metas: [] };
         }
 
-        const metas = paginatedEpisodes.map((ep, idx) =>
-            episodeToMeta(ep, skip + idx)
-        );
+        console.log('Parsing episode strings back into objects...');
+        // ===================================================================
+        // ========== התיקון הקריטי נמצא כאן! ==========
+        // אנו ממירים כל מחרוזת חזרה לאובייקט לפני שאנחנו שולחים אותה הלאה
+        const metas = paginatedEpisodeStrings
+            .map(epString => JSON.parse(epString)) 
+            .map((epObject, idx) => episodeToMeta(epObject, skip + idx))
+            .filter(meta => meta !== null); // סינון פרקים לא תקינים אם היו
+        // ===================================================================
 
         return { metas };
 
     } catch (error) {
-        console.error('Error fetching episodes from KV store:', error);
+        console.error('Error in Catalog Handler:', error);
         return { metas: [] };
     }
 });
