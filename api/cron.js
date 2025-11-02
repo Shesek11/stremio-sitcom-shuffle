@@ -1,8 +1,8 @@
-import { put } from '@vercel/blob';
-import { kv } from '@vercel/kv';
-import fetch from 'node-fetch';
+const { put } = require('@vercel/blob');
+const { kv } = require('@vercel/kv');
+const fetch = require('node-fetch');
 
-// ========== הגדרות ==========
+// ========== הגדרות - קריאה ממשתני הסביבה ב-Vercel ==========
 const CONFIG = {
     TRAKT_USERNAME: process.env.TRAKT_USERNAME,
     TRAKT_LIST_SLUG: process.env.TRAKT_LIST_SLUG,
@@ -83,8 +83,8 @@ function shuffleArray(array) {
     return shuffled;
 }
 
-// ========== הפונקציה הראשית (Handler) ==========
-export default async function handler(req, res) {
+// ========== Handler ראשי ==========
+module.exports = async (req, res) => {
     try {
         console.log('Cron Job Started: Fetching and shuffling episodes.');
         const allEpisodes = await getAllEpisodes();
@@ -94,16 +94,13 @@ export default async function handler(req, res) {
         const jsonContent = JSON.stringify(shuffledEpisodes);
         
         console.log('Uploading shuffled list to Vercel Blob...');
-        // העלאת הקובץ ל-Blob. הוא יהיה זמין לכולם לקריאה.
         const blob = await put('shuffled-episodes.json', jsonContent, {
             access: 'public',
             contentType: 'application/json',
-            // הוספת cache control כדי לוודא שנקבל תמיד את הגרסה האחרונה
             cacheControl: 'max-age=0, no-cache, no-store, must-revalidate'
         });
         console.log('Upload complete. Blob URL:', blob.url);
 
-        // שמירת ה-URL העדכני ב-KV, כדי שהתוסף הראשי יידע מאיפה למשוך את הקובץ
         await kv.set('episodes_blob_url', blob.url);
         
         res.status(200).json({ message: 'Success', url: blob.url, count: shuffledEpisodes.length });
@@ -112,4 +109,4 @@ export default async function handler(req, res) {
         console.error('Cron job failed:', error);
         res.status(500).json({ message: 'Failed', error: error.message });
     }
-}
+};
