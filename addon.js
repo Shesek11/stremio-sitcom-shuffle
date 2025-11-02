@@ -1,10 +1,9 @@
 const { addonBuilder } = require('stremio-addon-sdk');
 const { kv } = require('@vercel/kv');
 
-// ========== Manifest - מידע על ה-Addon ==========
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '2.1.0', // גרסה סופית!
+    version: '3.0.0-debug', // גרסת דיבאג
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
@@ -22,13 +21,8 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-// ========== פונקציית עזר - המרת פרק לפורמט Stremio ==========
 function episodeToMeta(episode, index) {
-    // הגנה מפני מקרה שבו אובייקט הפרק לא תקין
-    if (!episode || !episode.ids) {
-        console.error('Invalid episode object passed to episodeToMeta:', episode);
-        return null; 
-    }
+    if (!episode || !episode.ids) return null;
     return {
         id: `tt${episode.ids.imdb || episode.ids.trakt}`,
         type: 'series',
@@ -41,8 +35,10 @@ function episodeToMeta(episode, index) {
     };
 }
 
-// ========== Catalog Handler - הגרסה הסופית והמתוקנת ==========
 builder.defineCatalogHandler(async ({ type, id, extra }) => {
+    const startTime = Date.now();
+    console.log(`[${startTime}] HANDLER STARTED.`);
+
     if (type !== 'series' || id !== 'shuffled-episodes') {
         return { metas: [] };
     }
@@ -50,33 +46,34 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
     try {
         const skip = parseInt(extra.skip) || 0;
         const limit = 20;
-        const stop = skip + limit - 1; 
+        const stop = skip + limit - 1;
 
-        console.log(`Fetching page of episode STRINGS from KV. Range: ${skip} to ${stop}`);
+        console.log(`[${Date.now() - startTime}ms] STEP 1: Fetching range ${skip}-${stop} from KV.`);
         const paginatedEpisodeStrings = await kv.lrange('shuffled-episodes', skip, stop);
+        console.log(`[${Date.now() - startTime}ms] STEP 2: KV fetch completed. Found ${paginatedEpisodeStrings?.length || 0} items.`);
 
         if (!paginatedEpisodeStrings || paginatedEpisodeStrings.length === 0) {
-            console.log('No episodes found for this page or cache is empty.');
+            console.log(`[${Date.now() - startTime}ms] No episodes found, returning empty.`);
             return { metas: [] };
         }
 
-        console.log('Parsing episode strings back into objects...');
-        // ===================================================================
-        // ========== התיקון הקריטי נמצא כאן! ==========
-        // אנו ממירים כל מחרוזת חזרה לאובייקט לפני שאנחנו שולחים אותה הלאה
-        const metas = paginatedEpisodeStrings
-            .map(epString => JSON.parse(epString)) 
-            .map((epObject, idx) => episodeToMeta(epObject, skip + idx))
-            .filter(meta => meta !== null); // סינון פרקים לא תקינים אם היו
-        // ===================================================================
+        console.log(`[${Date.now() - startTime}ms] STEP 3: Starting JSON.parse loop.`);
+        const parsedEpisodes = paginatedEpisodeStrings.map(epString => JSON.parse(epString));
+        console.log(`[${Date.now() - startTime}ms] STEP 4: JSON.parse loop finished.`);
 
+        console.log(`[${Date.now() - startTime}ms] STEP 5: Starting episodeToMeta map loop.`);
+        const metas = parsedEpisodes
+            .map((epObject, idx) => episodeToMeta(epObject, skip + idx))
+            .filter(meta => meta !== null);
+        console.log(`[${Date.now() - startTime}ms] STEP 6: episodeToMeta map finished.`);
+
+        console.log(`[${Date.now() - startTime}ms] HANDLER FINISHED SUCCESSFULLY. Returning ${metas.length} metas.`);
         return { metas };
 
     } catch (error) {
-        console.error('Error in Catalog Handler:', error);
+        console.error(`[${Date.now() - startTime}ms] FATAL ERROR in Catalog Handler:`, error);
         return { metas: [] };
     }
 });
 
-// ========== ייצוא הממשק עבור Vercel ==========
 module.exports = builder.getInterface();
