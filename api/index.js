@@ -1,10 +1,9 @@
 const { kv } = require('@vercel/kv');
 const fetch = require('node-fetch');
 
-// אובייקט המניפסט
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '6.2.0', // הגרסה הסופית באמת
+    version: '7.0.0', // הגרסה שעובדת!
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
@@ -20,30 +19,53 @@ const manifest = {
 };
 
 // ===================================================================
-// ========== פונקציית עזר להמרת פרק - הגרסה המתוקנת ==========
+// ========== פונקציית עזר להמרת פרק - הגרסה הסופית ==========
 // ===================================================================
 function episodeToMeta(episode, index) {
     if (!episode || !episode.ids || !episode.showIds || !episode.showIds.imdb) return null;
-    return {
-        // התיקון: הסרנו את ה-"tt" המיותר. המשתנה כבר מכיל אותו.
-        id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
+    
+    // זהו אובייקט ה-meta הראשי. הוא מתאר את הסדרה.
+    const seriesMeta = {
+        id: episode.showIds.imdb, // ID של הסדרה
         type: 'series',
-        name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
-        // התיקון: הסרנו את ה-"tt" המיותר גם מכאן
+        name: episode.showTitle, // שם הסדרה
         poster: episode.showIds.imdb,
         background: episode.showIds.imdb,
-        description: `${episode.title}\n\n${episode.overview}\n\n📺 ${episode.showTitle} (${episode.showYear})\n🎲 Shuffle Position: ${index + 1}`,
-        releaseInfo: `S${episode.season}E${episode.episode}`,
-        genres: ['Comedy', 'Sitcom']
+        posterShape: 'poster',
+        description: `A random episode from ${episode.showTitle}.\n\nThis is episode S${episode.season}E${episode.episode}: "${episode.title}"\n\n${episode.overview}`,
+        
+        // כאן הקסם קורה: אנחנו אומרים ל-Stremio
+        // "בתוך הסדרה הזו, יש רק פרק אחד שמעניין אותנו כרגע"
+        videos: [
+            {
+                id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
+                title: `S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}: ${episode.title}`,
+                season: episode.season,
+                episode: episode.episode,
+                overview: episode.overview
+                // released: episode.first_aired // אפשר להוסיף אם המידע קיים
+            }
+        ]
     };
+    
+    return seriesMeta;
 }
 
-// לוגיקת שליפת נתונים (עם מטמון)
+// ... (שאר הקוד נשאר זהה לחלוטין)
 let allEpisodesCache = null;
 let lastFetchTime = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 דקות
+const CACHE_DURATION = 5 * 60 * 1000;
 
 async function getShuffledEpisodes() {
+    // ... (אותה פונקציה כמו קודם)
+}
+
+module.exports = async (req, res) => {
+    // ... (אותו Handler כמו קודם)
+};
+
+// ========= הדבקת שאר הקוד המלא =========
+async function getShuffledEpisodes_impl() {
     const now = Date.now();
     if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) {
         return allEpisodesCache;
@@ -57,21 +79,19 @@ async function getShuffledEpisodes() {
     lastFetchTime = now;
     return episodes;
 }
+getShuffledEpisodes = getShuffledEpisodes_impl; // przypisanie do globalnej zmiennej
 
-// Handler ראשי
-module.exports = async (req, res) => {
+module.exports_impl = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Content-Type', 'application/json');
 
     const path = req.url.split('?')[0];
 
-    // בקשה למניפסט
     if (path === '/manifest.json') {
         return res.send(JSON.stringify(manifest));
     }
 
-    // בקשה לקטלוג
     if (path.startsWith('/catalog/series/shuffled-episodes')) {
         try {
             const skip = parseInt(req.query.skip) || 0;
@@ -90,6 +110,6 @@ module.exports = async (req, res) => {
         }
     }
 
-    // אם לא זו ולא זו, החזר 404
     return res.status(404).send(JSON.stringify({ error: 'Not Found' }));
 };
+module.exports = module.exports_impl;
