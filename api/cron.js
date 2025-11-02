@@ -36,7 +36,7 @@ async function getShowEpisodes(showSlug) {
     for (const season of seasons) {
         if (season.number === 0) continue;
         for (const episode of season.episodes || []) {
-            if (episode.ids && episode.ids.imdb) { // שומרים רק פרקים עם IMDb ID
+            if (episode.ids && episode.ids.imdb) {
                 episodes.push({
                     season: season.number,
                     episode: episode.number,
