@@ -97,7 +97,8 @@ module.exports = async (req, res) => {
         const blob = await put('shuffled-episodes.json', jsonContent, {
             access: 'public',
             contentType: 'application/json',
-            cacheControl: 'max-age=0, no-cache, no-store, must-revalidate'
+            cacheControl: 'max-age=0, no-cache, no-store, must-revalidate',
+            allowOverwrite: true
         });
         console.log('Upload complete. Blob URL:', blob.url);
 
