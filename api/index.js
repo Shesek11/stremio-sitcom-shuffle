@@ -3,7 +3,7 @@ const fetch = require('node-fetch');
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '16.0.0',
+    version: '17.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ type: 'movie', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
@@ -17,14 +17,17 @@ function episodeToMeta(episode, index) {
     
     return {
         id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`, // ID עבור Torrentio
-        imdb_id: episode.ids.imdb, // ID עבור Cinemeta
+        // השדה החשוב ביותר: imdb_id בתוך האובייקט posterMeta
+        // Stremio ישתמש בזה כדי למצוא את המידע הנכון
+        posterMeta: {
+            imdb: episode.ids.imdb
+        },
         type: 'movie',
         name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
-        poster: episode.showPoster || null,
+        // Stremio ישתמש ב-posterMeta כדי למצוא את הפוסטר הנכון בעצמו
+        poster: episode.ids.imdb,
         background: episode.showFanart || null,
-        logo: episode.showFanart || null,
-        description: `This is a random episode from '${episode.showTitle}'.\n\nEpisode Title: "${episode.title}"\n\n${episode.overview}`,
-        releaseInfo: `${episode.showYear || ''}`,
+        description: `This is a random episode from '${episode.showTitle}'.\n\nEpisode Title: "${episode.title}"\n\n${episode.overview}`
     };
 }
 
@@ -34,14 +37,22 @@ const CACHE_DURATION = 5 * 60 * 1000;
 
 async function getShuffledEpisodes() {
     const now = Date.now();
-    if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) { return allEpisodesCache; }
+    if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) {
+        console.log('Returning episodes from in-memory cache.');
+        return allEpisodesCache;
+    }
     const blobUrl = await kv.get('episodes_blob_url');
     if (!blobUrl) throw new Error('Blob URL not found. Cron job may not have run yet.');
+    
+    console.log(`Fetching episode data from Blob URL: ${blobUrl}`);
     const response = await fetch(blobUrl);
     if (!response.ok) throw new Error(`Failed to fetch episode blob: ${response.statusText}`);
+    
     const episodes = await response.json();
     allEpisodesCache = episodes;
     lastFetchTime = now;
+    
+    console.log(`Successfully fetched and cached ${episodes.length} episodes.`);
     return episodes;
 }
 
