@@ -3,7 +3,7 @@ const fetch = require('node-fetch');
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '11.0.0', // הגרסה היציבה הסופית
+    version: '12.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ type: 'movie', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
@@ -18,15 +18,29 @@ function episodeToMeta(episode, index) {
         id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
         type: 'movie',
         name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
-        poster: episode.showPoster || null, // שימוש בקישור הישיר
-        background: episode.showFanart || null, // שימוש בקישור הישיר
+        poster: episode.showPoster || null,
+        background: episode.showFanart || null,
         description: `This is a random episode from '${episode.showTitle}'.\n\nEpisode Title: "${episode.title}"\n\n${episode.overview}`
     };
 }
 
-// ... (פונקציית getShuffledEpisodes נשארת זהה)
+let allEpisodesCache = null;
+let lastFetchTime = 0;
+const CACHE_DURATION = 5 * 60 * 1000;
 
-// Handler ראשי
+async function getShuffledEpisodes() {
+    const now = Date.now();
+    if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) { return allEpisodesCache; }
+    const blobUrl = await kv.get('episodes_blob_url');
+    if (!blobUrl) throw new Error('Blob URL not found. Cron job may not have run yet.');
+    const response = await fetch(blobUrl);
+    if (!response.ok) throw new Error(`Failed to fetch episode blob: ${response.statusText}`);
+    const episodes = await response.json();
+    allEpisodesCache = episodes;
+    lastFetchTime = now;
+    return episodes;
+}
+
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
@@ -57,4 +71,3 @@ module.exports = async (req, res) => {
 
     return res.status(404).send(JSON.stringify({ error: 'Not Found' }));
 };
-// ... (הדבק כאן את שאר הפונקציות המלאות כפי שהיו)
