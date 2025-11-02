@@ -1,19 +1,16 @@
 const { kv } = require('@vercel/kv');
 const fetch = require('node-fetch');
 
-// ID ייחודי לסדרה הוירטואלית שלנו
-const SHUFFLE_SERIES_ID = 'shfl:sitcom_shuffle';
-
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '19.0.0', // The Playlist Version
+    version: '20.0.0',
     name: 'Sitcom Shuffle',
-    description: 'A playlist of random shuffled sitcom episodes.',
-    catalogs: [{ type: 'series', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
-    // הוספנו stream handler
-    resources: ['catalog', 'meta', 'stream'], 
-    types: ['series'],
-    idPrefixes: [SHUFFLE_SERIES_ID.split(':')[0]]
+    description: 'Random shuffled episodes from your favorite sitcoms',
+    catalogs: [{ type: 'movie', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
+    // אנחנו תוסף meta וגם catalog
+    resources: ['catalog', 'meta'],
+    types: ['movie'],
+    idPrefixes: ['tt']
 };
 
 let allEpisodesCache = null;
@@ -42,22 +39,21 @@ module.exports = async (req, res) => {
     const path = req.url.split('?')[0];
     const pathParts = path.split('/');
 
-    // בקשה למניפסט
     if (path === '/manifest.json') {
         return res.send(JSON.stringify(manifest));
     }
-    
-    // ================== CATALOG HANDLER ==================
-    if (path.startsWith('/catalog/series/shuffled-episodes')) {
+
+    // Catalog Handler
+    if (path.startsWith('/catalog/movie/shuffled-episodes')) {
         try {
             const allEpisodes = await getShuffledEpisodes();
-            const metas = allEpisodes.map((episode, index) => {
-                 if (!episode) return null;
+            // לקטלוג, נשלח רק את המידע המינימלי
+            const metas = allEpisodes.map(episode => {
+                 if (!episode || !episode.showIds?.imdb) return null;
                  return {
-                    // ה-ID מצביע על פרק בסדרה הוירטואלית שלנו
-                    id: `${SHUFFLE_SERIES_ID}:1:${index + 1}`,
-                    type: 'series',
-                    name: `${episode.showTitle} - S${episode.season}E${episode.episode}`,
+                    id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
+                    type: 'movie',
+                    name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
                     poster: episode.showPoster || null
                  };
             }).filter(Boolean);
@@ -68,68 +64,35 @@ module.exports = async (req, res) => {
         }
     }
 
-    // ================== META HANDLER ==================
-    if (path.startsWith('/meta/series/')) {
+    // Meta Handler
+    if (path.startsWith('/meta/movie/')) {
         try {
-            const seriesId = path.split('/')[3].replace('.json', '');
-            if (seriesId !== SHUFFLE_SERIES_ID) {
-                return res.status(404).send(JSON.stringify({ error: 'Not Found' }));
-            }
+            const fullId = path.split('/')[3].replace('.json', '');
+            const [seriesId, season, episodeNum] = fullId.split(':');
 
             const allEpisodes = await getShuffledEpisodes();
+            const episodeData = allEpisodes.find(ep => ep.showIds.imdb === seriesId && ep.season == season && ep.episode == episodeNum);
+
+            if (!episodeData) {
+                return res.status(404).send(JSON.stringify({ err: 'Episode not found' }));
+            }
+            
+            // בניית אובייקט meta מלא עם כל המידע שאספנו
             const metaObject = {
-                id: SHUFFLE_SERIES_ID,
-                type: 'series',
-                name: 'Sitcom Shuffle Playlist',
-                poster: 'https://via.placeholder.com/300x450/1a1a2e/ffffff?text=Sitcom%0AShuffle',
-                description: 'A continuously shuffled playlist of your favorite sitcom episodes.',
-                // בניית רשימת ה"פרקים" של הסדרה הוירטואלית
-                videos: allEpisodes.map((episode, index) => ({
-                    id: `${SHUFFLE_SERIES_ID}:1:${index + 1}`,
-                    title: `${episode.showTitle} - S${episode.season}E${episode.episode}`,
-                    season: 1,
-                    episode: index + 1,
-                    overview: episode.overview
-                }))
+                id: fullId,
+                type: 'movie',
+                name: `${episodeData.showTitle} - S${String(season).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')}`,
+                poster: episodeData.showPoster,
+                background: episodeData.showFanart,
+                description: `This is a random episode from '${episodeData.showTitle}'.\n\nEpisode Title: "${episodeData.title}"\n\n${episodeData.overview}`,
+                releaseInfo: `${episodeData.showYear || ''}`
             };
+
             return res.send(JSON.stringify({ meta: metaObject }));
+
         } catch (error) {
             console.error("Error in meta handler:", error);
             return res.status(500).send(JSON.stringify({ error: error.message }));
-        }
-    }
-
-    // ================== STREAM HANDLER ==================
-    if (path.startsWith('/stream/series/')) {
-        try {
-            const fullId = path.split('/')[3].replace('.json', ''); // shfl:sitcom_shuffle:1:25
-            const parts = fullId.split(':');
-            const seriesId = `${parts[0]}:${parts[1]}`;
-            const episodeNum = parseInt(parts[3]);
-
-            if (seriesId !== SHUFFLE_SERIES_ID) {
-                return res.status(404).send(JSON.stringify({ streams: [] }));
-            }
-
-            const allEpisodes = await getShuffledEpisodes();
-            // מצא את הפרק האמיתי שתואם למספר הסידורי
-            const targetEpisode = allEpisodes[episodeNum - 1];
-
-            if (!targetEpisode) {
-                return res.status(404).send(JSON.stringify({ streams: [] }));
-            }
-
-            // ה-ID האמיתי של הפרק (עבור Torrentio)
-            const realEpisodeId = `${targetEpisode.showIds.imdb}:${targetEpisode.season}:${targetEpisode.episode}`;
-            
-            console.log(`Redirecting stream request for virtual episode ${episodeNum} to real ID ${realEpisodeId}`);
-
-            // בצע הפניה ל-Stremio עצמו
-            return res.status(302).set('Location', `stremio:///stream/series/${realEpisodeId}.json`).send();
-
-        } catch (error) {
-            console.error("Error in stream handler:", error);
-            return res.status(500).send(JSON.stringify({ streams: [] }));
         }
     }
 
