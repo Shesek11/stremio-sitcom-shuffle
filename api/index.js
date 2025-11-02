@@ -23,7 +23,7 @@ const manifest = {
 function episodeToMeta(episode, index) {
     if (!episode || !episode.ids) return null;
     return {
-        id: `tt${episode.ids.imdb || episode.ids.trakt}`,
+        id: `tt${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
         type: 'series',
         name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
         poster: `https://via.placeholder.com/300x450/1a1a2e/16213e?text=${encodeURIComponent(episode.showTitle)}`,
