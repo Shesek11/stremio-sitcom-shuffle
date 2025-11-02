@@ -1,20 +1,10 @@
-const { addonBuilder, serveHTTP } = require('stremio-addon-sdk');
-const fetch = require('node-fetch');
-
-// ========== הגדרות - מלא את הפרטים שלך כאן ==========
-const CONFIG = {
-    TRAKT_USERNAME: 'Shesek',      // שם המשתמש שלך ב-Trakt
-    TRAKT_LIST_SLUG: 'sitcom-shuffle',          // slug של רשימת הסדרות (מה-URL)
-    TRAKT_CLIENT_ID: '41f49f5007a6b18f0248d4a905013dd60160a0f915cfb163fb1e822e33f43c69',          // Client ID מ-Trakt
-    TRAKT_ACCESS_TOKEN: 'a78753624445dee3d2d6774f1aa2592cca65a28a44bdb16989c3ae2e4ab31bbd',    // Access Token שקיבלת
-    CACHE_TTL: 3600000,                         // זמן שמירה של cache (1 שעה)
-    SHUFFLE_REFRESH: 86400000                   // רענון ה-shuffle כל 24 שעות
-};
+const { addonBuilder } = require('stremio-addon-sdk');
+const { kv } = require('@vercel/kv');
 
 // ========== Manifest - מידע על ה-Addon ==========
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '1.0.0',
+    version: '1.0.0', // אפשר לשקול לעדכן גרסה ל-2.0.0 אחרי שינוי כה גדול
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
@@ -32,109 +22,8 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
-// ========== Cache ==========
-let episodesCache = null;
-let lastShuffleTime = 0;
-
-// ========== פונקציות עזר ==========
-
-// Headers לבקשות Trakt
-function getTraktHeaders() {
-    return {
-        'Content-Type': 'application/json',
-        'trakt-api-version': '2',
-        'trakt-api-key': CONFIG.TRAKT_CLIENT_ID,
-        'Authorization': `Bearer ${CONFIG.TRAKT_ACCESS_TOKEN}`
-    };
-}
-
-// שליפת רשימת הסדרות מ-Trakt
-async function getShowsFromList() {
-    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
-    
-    const response = await fetch(url, { headers: getTraktHeaders() });
-    
-    if (!response.ok) {
-        throw new Error(`Failed to fetch list: ${response.status} ${response.statusText}`);
-    }
-    
-    const items = await response.json();
-    return items.map(item => item.show);
-}
-
-// שליפת כל הפרקים של סדרה
-async function getShowEpisodes(showSlug) {
-    const url = `https://api.trakt.tv/shows/${showSlug}/seasons?extended=episodes`;
-    
-    const response = await fetch(url, { headers: getTraktHeaders() });
-    
-    if (!response.ok) {
-        console.error(`Failed to fetch episodes for ${showSlug}`);
-        return [];
-    }
-    
-    const seasons = await response.json();
-    const episodes = [];
-    
-    for (const season of seasons) {
-        if (season.number === 0) continue; // דילוג על specials
-        
-        for (const episode of season.episodes || []) {
-            episodes.push({
-                showSlug,
-                showTitle: '', // נמלא מאוחר יותר
-                season: season.number,
-                episode: episode.number,
-                title: episode.title || `Episode ${episode.number}`,
-                overview: episode.overview || '',
-                ids: episode.ids
-            });
-        }
-    }
-    
-    return episodes;
-}
-
-// שליפת כל הפרקים מכל הסדרות
-async function getAllEpisodes() {
-    console.log('Fetching shows from Trakt list...');
-    const shows = await getShowsFromList();
-    console.log(`Found ${shows.length} shows`);
-    
-    const allEpisodes = [];
-    
-    for (const show of shows) {
-        console.log(`Fetching episodes for: ${show.title}`);
-        const episodes = await getShowEpisodes(show.ids.slug);
-        
-        // הוסף את שם הסדרה לכל פרק
-        episodes.forEach(ep => {
-            ep.showTitle = show.title;
-            ep.showYear = show.year;
-            ep.showIds = show.ids;
-        });
-        
-        allEpisodes.push(...episodes);
-        
-        // המתנה קצרה כדי לא להכביד על ה-API
-        await new Promise(resolve => setTimeout(resolve, 300));
-    }
-    
-    console.log(`Total episodes collected: ${allEpisodes.length}`);
-    return allEpisodes;
-}
-
-// ערבוב מערך (Fisher-Yates shuffle)
-function shuffleArray(array) {
-    const shuffled = [...array];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
-}
-
-// המרת פרק לפורמט Stremio
+// ========== פונקציית עזר - המרת פרק לפורמט Stremio ==========
+// פונקציה זו נשארת כאן כי אנחנו עדיין צריכים אותה כדי להציג את המידע
 function episodeToMeta(episode, index) {
     return {
         id: `tt${episode.ids.imdb || episode.ids.trakt}`,
@@ -153,36 +42,35 @@ builder.defineCatalogHandler(async ({ type, id, extra }) => {
     if (type !== 'series' || id !== 'shuffled-episodes') {
         return { metas: [] };
     }
-    
-    // בדיקה אם צריך רענון
-    const now = Date.now();
-    const needsRefresh = !episodesCache || 
-                        (now - lastShuffleTime) > CONFIG.SHUFFLE_REFRESH;
-    
-    if (needsRefresh) {
-        console.log('Refreshing episodes cache and shuffling...');
-        try {
-            const episodes = await getAllEpisodes();
-            episodesCache = shuffleArray(episodes);
-            lastShuffleTime = now;
-            console.log(`Cache refreshed with ${episodesCache.length} episodes`);
-        } catch (error) {
-            console.error('Error fetching episodes:', error);
+
+    console.log('Fetching shuffled episodes from KV store...');
+    try {
+        // שלב 1: שליפה מהירה של כל רשימת הפרקים ממסד הנתונים
+        const episodesCache = await kv.get('shuffled-episodes');
+
+        // אם המטמון ריק (למשל, ה-cron job עוד לא רץ), החזר רשימה ריקה
+        if (!episodesCache || episodesCache.length === 0) {
+            console.log('Cache is empty. Waiting for the cron job to run.');
             return { metas: [] };
         }
+
+        // שלב 2: Pagination על הרשימה שהתקבלה
+        const skip = parseInt(extra.skip) || 0;
+        const limit = 100; // אפשר להגדיר מספר קטן יותר אם רוצים
+        const paginatedEpisodes = episodesCache.slice(skip, skip + limit);
+
+        // שלב 3: המרת הפרקים לפורמט ש-Stremio מבין
+        const metas = paginatedEpisodes.map((ep, idx) =>
+            episodeToMeta(ep, skip + idx)
+        );
+
+        return { metas };
+
+    } catch (error) {
+        console.error('Error fetching episodes from KV store:', error);
+        return { metas: [] }; // החזר רשימה ריקה במקרה של שגיאה
     }
-    
-    // pagination
-    const skip = parseInt(extra.skip) || 0;
-    const limit = 100;
-    const paginatedEpisodes = episodesCache.slice(skip, skip + limit);
-    
-    const metas = paginatedEpisodes.map((ep, idx) => 
-        episodeToMeta(ep, skip + idx)
-    );
-    
-    return { metas };
 });
 
-// ========== הפעלת השרת ==========
+// ========== ייצוא הממשק עבור Vercel ==========
 module.exports = builder.getInterface();
