@@ -3,19 +3,18 @@ const fetch = require('node-fetch');
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '13.0.0', // הגרסה היציבה והנכונה
+    version: '14.0.0', // הגרסה שעובדת סופית
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
-    catalogs: [{ type: 'series', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
-    // הוספנו meta handler
+    catalogs: [{ type: 'movie', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
     resources: ['catalog', 'meta'], 
-    types: ['series'],
+    types: ['movie'], // אנחנו תוסף של סרטים עכשיו
     idPrefixes: ['tt']
 };
 
 let allEpisodesCache = null;
 let lastFetchTime = 0;
-const CACHE_DURATION = 5 * 60 * 1000; // 5 דקות
+const CACHE_DURATION = 5 * 60 * 1000;
 
 async function getShuffledEpisodes() {
     const now = Date.now();
@@ -45,23 +44,22 @@ module.exports = async (req, res) => {
     }
 
     // בקשה לקטלוג
-    if (pathParts[1] === 'catalog' && pathParts[2] === 'series' && pathParts[3]?.startsWith('shuffled-episodes')) {
+    if (pathParts[1] === 'catalog' && pathParts[2] === 'movie' && pathParts[3]?.startsWith('shuffled-episodes')) {
         try {
             const skip = parseInt(req.query.skip) || 0;
             const limit = 50;
             const allEpisodes = await getShuffledEpisodes();
             const paginatedEpisodes = allEpisodes.slice(skip, skip + limit);
-
+            
+            // יצירת אובייקטים לקטלוג
             const metas = paginatedEpisodes.map(episode => {
-                if (!episode || !episode.showIds || !episode.showIds.imdb) return null;
-                return {
-                    id: episode.showIds.imdb,
-                    type: 'series',
+                 if (!episode || !episode.showIds || !episode.showIds.imdb) return null;
+                 return {
+                    id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
+                    type: 'movie',
                     name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
-                    poster: episode.showPoster || null,
-                    // הפרמטר הנסתר שלנו!
-                    posterShape: `episode=${episode.season}:${episode.episode}`
-                };
+                    poster: episode.showPoster || null
+                 };
             }).filter(Boolean);
 
             return res.send(JSON.stringify({ metas }));
@@ -72,34 +70,26 @@ module.exports = async (req, res) => {
     }
 
     // בקשה למידע (Meta)
-    if (pathParts[1] === 'meta' && pathParts[2] === 'series' && pathParts[3]) {
+    if (pathParts[1] === 'meta' && pathParts[2] === 'movie' && pathParts[3]) {
         try {
-            const seriesId = pathParts[3].replace('.json', '');
-            const [season, episodeNum] = req.query.episode.split(':');
+            const fullId = pathParts[3].replace('.json', ''); // tt...:S:E
+            const [seriesId, season, episodeNum] = fullId.split(':');
             
             const allEpisodes = await getShuffledEpisodes();
-            // מצא את הפרק המדויק מהרשימה שלנו
             const episodeData = allEpisodes.find(ep => ep.showIds.imdb === seriesId && ep.season == season && ep.episode == episodeNum);
 
             if (!episodeData) {
                 return res.status(404).send(JSON.stringify({ err: 'Episode not found in our data' }));
             }
             
-            // בנה אובייקט meta מלא עם הפרק הבודד
+            // בניית אובייקט meta מלא עבור הפרק
             const metaObject = {
-                id: episodeData.showIds.imdb,
-                type: 'series',
-                name: episodeData.showTitle,
+                id: fullId,
+                type: 'movie',
+                name: `${episodeData.showTitle} - S${String(season).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')}`,
                 poster: episodeData.showPoster,
                 background: episodeData.showFanart,
-                description: `Displaying random episode:\nS${season}E${episodeNum} - ${episodeData.title}\n\n${episodeData.overview}`,
-                videos: [{
-                    id: `${episodeData.showIds.imdb}:${season}:${episodeNum}`,
-                    title: `S${String(season).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')}: ${episodeData.title}`,
-                    season: parseInt(season),
-                    episode: parseInt(episodeNum),
-                    released: new Date() // Stremio דורש תאריך כלשהו
-                }]
+                description: `This is a random episode from '${episodeData.showTitle}'.\n\nEpisode Title: "${episodeData.title}"\n\n${episodeData.overview}`
             };
 
             return res.send(JSON.stringify({ meta: metaObject }));
