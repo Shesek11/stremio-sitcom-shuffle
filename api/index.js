@@ -1,10 +1,10 @@
 const { kv } = require('@vercel/kv');
 const fetch = require('node-fetch');
 
-// אובייקט המניפסט, עכשיו חי כאן
+// אובייקט המניפסט
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '6.0.0',
+    version: '6.1.0', // הגרסה היציבה
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [
@@ -12,7 +12,6 @@ const manifest = {
             type: 'series',
             id: 'shuffled-episodes',
             name: 'Shuffled Sitcom Episodes'
-            // אין צורך ב-extra, Stremio מוסיף את skip אוטומטית
         }
     ],
     resources: ['catalog'],
@@ -20,7 +19,7 @@ const manifest = {
     idPrefixes: ['tt']
 };
 
-// פונקציית עזר, גם היא כאן
+// פונקציית עזר להמרת פרק
 function episodeToMeta(episode, index) {
     if (!episode || !episode.ids) return null;
     return {
@@ -35,6 +34,7 @@ function episodeToMeta(episode, index) {
     };
 }
 
+// לוגיקת שליפת נתונים (עם מטמון)
 let allEpisodesCache = null;
 let lastFetchTime = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 דקות
@@ -54,23 +54,31 @@ async function getShuffledEpisodes() {
     return episodes;
 }
 
-// Handler ראשי שמטפל בכל הבקשות
+// ===================================================================
+// ========== Handler ראשי עם ניתוב מתוקן ==========
+// ===================================================================
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Content-Type', 'application/json');
 
-    const urlParts = req.url.split('/');
-    
+    // קודם כל, ננקה את הכתובת מפרמטרים כדי לקבל את הנתיב הנקי
+    const path = req.url.split('?')[0];
+
+    // --- ניתוב מדויק ---
+
     // בקשה למניפסט
-    if (urlParts[1] === 'manifest.json') {
+    if (path === '/manifest.json') {
+        console.log('Request received for /manifest.json');
         return res.send(JSON.stringify(manifest));
     }
 
     // בקשה לקטלוג
-    // דוגמה לכתובת: /catalog/series/shuffled-episodes/skip=50.json
-    if (urlParts[1] === 'catalog' && urlParts[2] === 'series' && urlParts[3] === 'shuffled-episodes.json') {
+    // Stremio מבקש כתובת בפורמט: /catalog/{type}/{id}.json
+    if (path.startsWith('/catalog/series/shuffled-episodes')) {
+        console.log('Request received for catalog.');
         try {
+            // Vercel מנתח עבורנו את הפרמטרים, אין צורך לנתח את הכתובת ידנית
             const skip = parseInt(req.query.skip) || 0;
             const limit = 50;
 
@@ -88,5 +96,6 @@ module.exports = async (req, res) => {
     }
 
     // אם לא זו ולא זו, החזר 404
+    console.log(`Request for unknown path: ${path}`);
     return res.status(404).send(JSON.stringify({ error: 'Not Found' }));
 };
