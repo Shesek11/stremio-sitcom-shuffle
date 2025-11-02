@@ -1,37 +1,20 @@
 const { kv } = require('@vercel/kv');
 const fetch = require('node-fetch');
 
+// ID ייחודי לסדרה הוירטואלית שלנו
+const SHUFFLE_SERIES_ID = 'shfl:sitcom_shuffle';
+
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '18.0.0',
+    version: '19.0.0', // The Playlist Version
     name: 'Sitcom Shuffle',
-    description: 'Random shuffled episodes from your favorite sitcoms',
-    catalogs: [{ type: 'movie', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
-    resources: ['catalog'], // אנחנו רק קטלוג! לא צריכים meta.
-    types: ['movie'],
-    idPrefixes: ['tt']
+    description: 'A playlist of random shuffled sitcom episodes.',
+    catalogs: [{ type: 'series', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
+    // הוספנו stream handler
+    resources: ['catalog', 'meta', 'stream'], 
+    types: ['series'],
+    idPrefixes: [SHUFFLE_SERIES_ID.split(':')[0]]
 };
-
-function episodeToMeta(episode, index) {
-    if (!episode || !episode.ids?.imdb || !episode.showIds?.imdb) return null;
-    
-    // זו הגרסה הפרקטית: אנחנו מספקים את כל המידע בעצמנו
-    return {
-        id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`, // ID עבור Torrentio
-        type: 'movie',
-        name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
-        
-        // נספק את התמונות והמידע בעצמנו
-        poster: episode.showPoster || null,
-        background: episode.showFanart || null,
-        description: `This is a random episode from '${episode.showTitle}'.\n\nEpisode Title: "${episode.title}"\n\n${episode.overview}`,
-        
-        // שדות נוספים שעוזרים למראה ותחושה
-        releaseInfo: `${episode.showYear || ''}`,
-        // אנחנו לא מספקים imdb_id כדי לא לבלבל את Cinemeta
-    };
-}
-
 
 let allEpisodesCache = null;
 let lastFetchTime = 0;
@@ -50,6 +33,7 @@ async function getShuffledEpisodes() {
     return episodes;
 }
 
+// Handler ראשי
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
@@ -58,23 +42,94 @@ module.exports = async (req, res) => {
     const path = req.url.split('?')[0];
     const pathParts = path.split('/');
 
+    // בקשה למניפסט
     if (path === '/manifest.json') {
         return res.send(JSON.stringify(manifest));
     }
-
-    if (pathParts[1] === 'catalog' && pathParts[2] === 'movie' && pathParts[3]?.startsWith('shuffled-episodes')) {
+    
+    // ================== CATALOG HANDLER ==================
+    if (path.startsWith('/catalog/series/shuffled-episodes')) {
         try {
-            const skip = parseInt(req.query.skip) || 0;
-            const limit = 50;
             const allEpisodes = await getShuffledEpisodes();
-            const paginatedEpisodes = allEpisodes.slice(skip, skip + limit);
-            const metas = paginatedEpisodes
-                .map((ep, idx) => episodeToMeta(ep, idx))
-                .filter(Boolean);
+            const metas = allEpisodes.map((episode, index) => {
+                 if (!episode) return null;
+                 return {
+                    // ה-ID מצביע על פרק בסדרה הוירטואלית שלנו
+                    id: `${SHUFFLE_SERIES_ID}:1:${index + 1}`,
+                    type: 'series',
+                    name: `${episode.showTitle} - S${episode.season}E${episode.episode}`,
+                    poster: episode.showPoster || null
+                 };
+            }).filter(Boolean);
             return res.send(JSON.stringify({ metas }));
         } catch (error) {
             console.error("Error in catalog handler:", error);
             return res.status(500).send(JSON.stringify({ error: error.message }));
+        }
+    }
+
+    // ================== META HANDLER ==================
+    if (path.startsWith('/meta/series/')) {
+        try {
+            const seriesId = path.split('/')[3].replace('.json', '');
+            if (seriesId !== SHUFFLE_SERIES_ID) {
+                return res.status(404).send(JSON.stringify({ error: 'Not Found' }));
+            }
+
+            const allEpisodes = await getShuffledEpisodes();
+            const metaObject = {
+                id: SHUFFLE_SERIES_ID,
+                type: 'series',
+                name: 'Sitcom Shuffle Playlist',
+                poster: 'https://via.placeholder.com/300x450/1a1a2e/ffffff?text=Sitcom%0AShuffle',
+                description: 'A continuously shuffled playlist of your favorite sitcom episodes.',
+                // בניית רשימת ה"פרקים" של הסדרה הוירטואלית
+                videos: allEpisodes.map((episode, index) => ({
+                    id: `${SHUFFLE_SERIES_ID}:1:${index + 1}`,
+                    title: `${episode.showTitle} - S${episode.season}E${episode.episode}`,
+                    season: 1,
+                    episode: index + 1,
+                    overview: episode.overview
+                }))
+            };
+            return res.send(JSON.stringify({ meta: metaObject }));
+        } catch (error) {
+            console.error("Error in meta handler:", error);
+            return res.status(500).send(JSON.stringify({ error: error.message }));
+        }
+    }
+
+    // ================== STREAM HANDLER ==================
+    if (path.startsWith('/stream/series/')) {
+        try {
+            const fullId = path.split('/')[3].replace('.json', ''); // shfl:sitcom_shuffle:1:25
+            const parts = fullId.split(':');
+            const seriesId = `${parts[0]}:${parts[1]}`;
+            const episodeNum = parseInt(parts[3]);
+
+            if (seriesId !== SHUFFLE_SERIES_ID) {
+                return res.status(404).send(JSON.stringify({ streams: [] }));
+            }
+
+            const allEpisodes = await getShuffledEpisodes();
+            // מצא את הפרק האמיתי שתואם למספר הסידורי
+            const targetEpisode = allEpisodes[episodeNum - 1];
+
+            if (!targetEpisode) {
+                return res.status(404).send(JSON.stringify({ streams: [] }));
+            }
+
+            // ה-ID האמיתי של הפרק (עבור Torrentio)
+            const realEpisodeId = `${targetEpisode.showIds.imdb}:${targetEpisode.season}:${targetEpisode.episode}`;
+            
+            console.log(`Redirecting stream request for virtual episode ${episodeNum} to real ID ${realEpisodeId}`);
+
+            // בצע הפניה ל-Stremio עצמו
+            return res.status(302).set('Location', `stremio:///stream/series/${realEpisodeId}.json`).send();
+
+        } catch (error) {
+            console.error("Error in stream handler:", error);
+            return res.status(500).send(JSON.stringify({ streams: [] }));
         }
     }
 
