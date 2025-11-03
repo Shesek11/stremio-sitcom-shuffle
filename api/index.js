@@ -3,14 +3,13 @@ const fetch = require('node-fetch');
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '23.0.0',
+    version: '24.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ 
         type: 'movie', 
         id: 'shuffled-episodes', 
-        name: 'Shuffled Sitcom Episodes',
-        extra: [{ name: 'skip', isRequired: false }]
+        name: 'Shuffled Sitcom Episodes'
     }],
     resources: ['catalog', 'meta'],
     types: ['movie'],
@@ -52,20 +51,19 @@ module.exports = async (req, res) => {
         try {
             const allEpisodes = await getShuffledEpisodes();
             const metas = allEpisodes.map(episode => {
-                if (!episode || !episode.ids?.imdb) return null;
+                if (!episode || !episode.showIds?.imdb) return null;
+                
+                // יצירת ID בפורמט series:season:episode
+                const metaId = `${episode.showIds.imdb}:${episode.season}:${episode.episode}`;
                 
                 return {
-                    id: episode.ids.imdb,
+                    id: metaId,
                     type: 'movie',
                     name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
                     poster: episode.showPoster,
-                    posterShape: 'poster',
                     background: episode.showFanart,
-                    logo: episode.showPoster,
-                    description: episode.overview || `${episode.title}\n\n${episode.showTitle} - Season ${episode.season}, Episode ${episode.episode}`,
-                    releaseInfo: String(episode.showYear || ''),
-                    runtime: '23 min',
-                    website: `https://www.imdb.com/title/${episode.ids.imdb}/`
+                    description: `${episode.title}\n\n${episode.overview || ''}\n\nShow: ${episode.showTitle}\nSeason ${episode.season}, Episode ${episode.episode}`,
+                    releaseInfo: String(episode.showYear || '')
                 };
             }).filter(Boolean);
             
@@ -79,40 +77,42 @@ module.exports = async (req, res) => {
     // Meta Handler
     if (path.startsWith('/meta/movie/')) {
         try {
-            const episodeImdbId = path.split('/')[3].replace('.json', '');
+            const fullId = path.split('/')[3].replace('.json', '');
+            const [seriesImdbId, seasonStr, episodeStr] = fullId.split(':');
+            const season = parseInt(seasonStr);
+            const episodeNum = parseInt(episodeStr);
+            
             const allEpisodes = await getShuffledEpisodes();
-            const episodeData = allEpisodes.find(ep => ep.ids?.imdb === episodeImdbId);
+            const episodeData = allEpisodes.find(ep => 
+                ep.showIds?.imdb === seriesImdbId && 
+                ep.season === season && 
+                ep.episode === episodeNum
+            );
 
             if (!episodeData) {
                 return res.status(404).send(JSON.stringify({ err: 'Episode not found' }));
             }
             
             const metaObject = {
-                id: episodeImdbId,
+                id: fullId,
                 type: 'movie',
-                name: `${episodeData.showTitle} - S${String(episodeData.season).padStart(2, '0')}E${String(episodeData.episode).padStart(2, '0')}`,
+                name: `${episodeData.showTitle} - S${String(season).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')}`,
                 poster: episodeData.showPoster,
-                posterShape: 'poster',
                 background: episodeData.showFanart,
-                logo: episodeData.showPoster,
-                description: `**${episodeData.title}**\n\n${episodeData.overview || 'No description available'}\n\n━━━━━━━━━━\n📺 Show: ${episodeData.showTitle}\n📅 Season ${episodeData.season}, Episode ${episodeData.episode}\n🎬 Year: ${episodeData.showYear || 'N/A'}`,
+                description: `**${episodeData.title}**\n\n${episodeData.overview || 'No description available'}\n\n━━━━━━━━━━\n📺 ${episodeData.showTitle}\n📅 Season ${season}, Episode ${episodeNum}\n🎬 ${episodeData.showYear || 'N/A'}`,
                 releaseInfo: String(episodeData.showYear || ''),
-                runtime: '23 min',
-                genres: ['Comedy', 'Sitcom'],
-                director: [],
-                cast: [],
                 links: [
                     {
-                        name: 'IMDb',
+                        name: 'IMDb Episode',
                         category: 'imdb',
-                        url: `https://www.imdb.com/title/${episodeImdbId}/`
+                        url: `https://www.imdb.com/title/${episodeData.ids?.imdb || seriesImdbId}/`
+                    },
+                    {
+                        name: 'IMDb Series',
+                        category: 'imdb',
+                        url: `https://www.imdb.com/title/${seriesImdbId}/`
                     }
-                ],
-                trailerStreams: [],
-                behaviorHints: {
-                    defaultVideoId: episodeImdbId,
-                    hasScheduledVideos: false
-                }
+                ]
             };
 
             return res.send(JSON.stringify({ meta: metaObject }));
