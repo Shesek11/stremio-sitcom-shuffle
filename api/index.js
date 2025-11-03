@@ -3,13 +3,18 @@ const fetch = require('node-fetch');
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '22.0.0',
+    version: '23.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
-    catalogs: [{ type: 'movie', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
+    catalogs: [{ 
+        type: 'movie', 
+        id: 'shuffled-episodes', 
+        name: 'Shuffled Sitcom Episodes',
+        extra: [{ name: 'skip', isRequired: false }]
+    }],
     resources: ['catalog', 'meta'],
     types: ['movie'],
-    idPrefixes: ['shuffle_']
+    idPrefixes: ['tt']
 };
 
 let allEpisodesCache = null;
@@ -18,7 +23,9 @@ const CACHE_DURATION = 5 * 60 * 1000;
 
 async function getShuffledEpisodes() {
     const now = Date.now();
-    if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) { return allEpisodesCache; }
+    if (allEpisodesCache && (now - lastFetchTime < CACHE_DURATION)) { 
+        return allEpisodesCache; 
+    }
     const blobUrl = await kv.get('episodes_blob_url');
     if (!blobUrl) throw new Error('Blob URL not found. Cron job may not have run yet.');
     const response = await fetch(blobUrl);
@@ -44,22 +51,24 @@ module.exports = async (req, res) => {
     if (path.startsWith('/catalog/movie/shuffled-episodes')) {
         try {
             const allEpisodes = await getShuffledEpisodes();
-            const metas = allEpisodes.map((episode, index) => {
+            const metas = allEpisodes.map(episode => {
                 if (!episode || !episode.ids?.imdb) return null;
                 
-                // ID מותאם אישית שכולל את מזהה הפרק עצמו
-                const customId = `shuffle_${episode.ids.imdb}`;
-                
                 return {
-                    id: customId,
+                    id: episode.ids.imdb,
                     type: 'movie',
-                    name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')} - ${episode.title}`,
-                    poster: episode.showPoster || null,
-                    background: episode.showFanart || null,
-                    description: episode.overview || '',
-                    releaseInfo: `${episode.showYear || ''}`
+                    name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
+                    poster: episode.showPoster,
+                    posterShape: 'poster',
+                    background: episode.showFanart,
+                    logo: episode.showPoster,
+                    description: episode.overview || `${episode.title}\n\n${episode.showTitle} - Season ${episode.season}, Episode ${episode.episode}`,
+                    releaseInfo: String(episode.showYear || ''),
+                    runtime: '23 min',
+                    website: `https://www.imdb.com/title/${episode.ids.imdb}/`
                 };
             }).filter(Boolean);
+            
             return res.send(JSON.stringify({ metas }));
         } catch (error) {
             console.error("Error in catalog handler:", error);
@@ -70,11 +79,7 @@ module.exports = async (req, res) => {
     // Meta Handler
     if (path.startsWith('/meta/movie/')) {
         try {
-            const fullId = path.split('/')[3].replace('.json', '');
-            
-            // הסרת הפריפיקס shuffle_
-            const episodeImdbId = fullId.replace('shuffle_', '');
-            
+            const episodeImdbId = path.split('/')[3].replace('.json', '');
             const allEpisodes = await getShuffledEpisodes();
             const episodeData = allEpisodes.find(ep => ep.ids?.imdb === episodeImdbId);
 
@@ -82,33 +87,32 @@ module.exports = async (req, res) => {
                 return res.status(404).send(JSON.stringify({ err: 'Episode not found' }));
             }
             
-            // בניית meta עם videos שמפנה לפרק האמיתי
             const metaObject = {
-                id: fullId,
+                id: episodeImdbId,
                 type: 'movie',
-                name: `${episodeData.showTitle} - S${String(episodeData.season).padStart(2, '0')}E${String(episodeData.episode).padStart(2, '0')} - ${episodeData.title}`,
+                name: `${episodeData.showTitle} - S${String(episodeData.season).padStart(2, '0')}E${String(episodeData.episode).padStart(2, '0')}`,
                 poster: episodeData.showPoster,
+                posterShape: 'poster',
                 background: episodeData.showFanart,
-                description: `${episodeData.overview || 'No description available'}\n\nShow: ${episodeData.showTitle}\nSeason ${episodeData.season}, Episode ${episodeData.episode}`,
-                releaseInfo: `${episodeData.showYear || ''}`,
-                // זה החלק החשוב - videos שמפנה למזהה האמיתי של הפרק
-                videos: [
-                    {
-                        id: episodeImdbId,
-                        title: episodeData.title,
-                        season: episodeData.season,
-                        episode: episodeData.episode,
-                        released: episodeData.released || null,
-                        overview: episodeData.overview || ''
-                    }
-                ],
+                logo: episodeData.showPoster,
+                description: `**${episodeData.title}**\n\n${episodeData.overview || 'No description available'}\n\n━━━━━━━━━━\n📺 Show: ${episodeData.showTitle}\n📅 Season ${episodeData.season}, Episode ${episodeData.episode}\n🎬 Year: ${episodeData.showYear || 'N/A'}`,
+                releaseInfo: String(episodeData.showYear || ''),
+                runtime: '23 min',
+                genres: ['Comedy', 'Sitcom'],
+                director: [],
+                cast: [],
                 links: [
                     {
-                        name: "IMDb",
-                        category: "imdb",
+                        name: 'IMDb',
+                        category: 'imdb',
                         url: `https://www.imdb.com/title/${episodeImdbId}/`
                     }
-                ]
+                ],
+                trailerStreams: [],
+                behaviorHints: {
+                    defaultVideoId: episodeImdbId,
+                    hasScheduledVideos: false
+                }
             };
 
             return res.send(JSON.stringify({ meta: metaObject }));
