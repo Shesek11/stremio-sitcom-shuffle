@@ -3,20 +3,17 @@ const fetch = require('node-fetch');
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '26.0.0',
+    version: '27.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ 
-        type: 'series',
+        type: 'movie',
         id: 'shuffled-episodes', 
-        name: 'Shuffled Sitcom Episodes',
-        extra: [
-            { name: 'skip', isRequired: false }
-        ]
+        name: 'Shuffled Sitcom Episodes'
     }],
-    resources: ['catalog', 'meta'],
-    types: ['series'],
-    idPrefixes: ['tt']
+    resources: ['catalog', 'meta', 'stream'],
+    types: ['movie'],
+    idPrefixes: ['shufl_']
 };
 
 let allEpisodesCache = null;
@@ -50,31 +47,22 @@ module.exports = async (req, res) => {
     }
 
     // Catalog Handler
-    if (path.startsWith('/catalog/series/shuffled-episodes')) {
+    if (path.startsWith('/catalog/movie/shuffled-episodes')) {
         try {
             const allEpisodes = await getShuffledEpisodes();
-            const metas = allEpisodes.map(episode => {
+            const metas = allEpisodes.map((episode, idx) => {
                 if (!episode || !episode.showIds?.imdb) return null;
                 
-                const seriesId = episode.showIds.imdb;
+                // ID ייחודי לכל פרק משולב
+                const uniqueId = `shufl_${episode.showIds.imdb}_${episode.season}_${episode.episode}`;
                 
                 return {
-                    id: seriesId,
-                    type: 'series',
-                    name: episode.showTitle,
+                    id: uniqueId,
+                    type: 'movie',
+                    name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
                     poster: episode.showPoster,
-                    posterShape: 'poster',
                     background: episode.showFanart,
-                    logo: episode.showPoster,
-                    description: `Random episode from ${episode.showTitle}\n\nCurrent shuffle: S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')} - ${episode.title || 'Episode ' + episode.episode}\n\n${episode.overview || ''}`,
-                    releaseInfo: String(episode.showYear || ''),
-                    genres: ['Comedy'],
-                    // המידע החשוב - איזה פרק להציג
-                    _shuffled_episode: {
-                        season: episode.season,
-                        episode: episode.episode,
-                        title: episode.title
-                    }
+                    description: `${episode.title}\n\n${episode.overview || ''}`
                 };
             }).filter(Boolean);
             
@@ -85,54 +73,40 @@ module.exports = async (req, res) => {
         }
     }
 
-    // Meta Handler for Series
-    if (path.startsWith('/meta/series/')) {
+    // Meta Handler
+    if (path.startsWith('/meta/movie/')) {
         try {
-            const seriesId = path.split('/')[3].replace('.json', '');
-            const allEpisodes = await getShuffledEpisodes();
+            const uniqueId = path.split('/')[3].replace('.json', '');
+            const parts = uniqueId.replace('shufl_', '').split('_');
+            const seriesImdbId = parts[0];
+            const season = parseInt(parts[1]);
+            const episodeNum = parseInt(parts[2]);
             
-            // מצא את הפרק הרנדומלי של הסדרה הזו
-            const episodeData = allEpisodes.find(ep => ep.showIds?.imdb === seriesId);
+            const allEpisodes = await getShuffledEpisodes();
+            const episodeData = allEpisodes.find(ep => 
+                ep.showIds?.imdb === seriesImdbId && 
+                ep.season === season && 
+                ep.episode === episodeNum
+            );
 
             if (!episodeData) {
-                return res.status(404).send(JSON.stringify({ err: 'Series not found' }));
+                return res.status(404).send(JSON.stringify({ err: 'Episode not found' }));
             }
             
-            // בניית meta של סדרה עם הפרק הספציפי
             const metaObject = {
-                id: seriesId,
-                type: 'series',
-                name: episodeData.showTitle,
+                id: uniqueId,
+                type: 'movie',
+                name: `${episodeData.showTitle} - S${String(season).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')} - ${episodeData.title}`,
                 poster: episodeData.showPoster,
-                posterShape: 'poster',
                 background: episodeData.showFanart,
-                logo: episodeData.showPoster,
-                description: `**Random Shuffle Mode**\n\nCurrent episode: S${String(episodeData.season).padStart(2, '0')}E${String(episodeData.episode).padStart(2, '0')} - ${episodeData.title || 'Episode ' + episodeData.episode}\n\n${episodeData.overview || 'No description available'}\n\n━━━━━━━━━━━━━━\n📺 ${episodeData.showTitle}\n🎬 ${episodeData.showYear || 'N/A'}`,
+                description: `**${episodeData.title}**\n\n${episodeData.overview || 'No description available.'}\n\n━━━━━━━━━━━━━━\n📺 ${episodeData.showTitle}\n📅 Season ${season}, Episode ${episodeNum}\n🎬 ${episodeData.showYear || 'N/A'}`,
                 releaseInfo: String(episodeData.showYear || ''),
-                genres: ['Comedy'],
-                runtime: '22 min',
-                country: 'USA',
-                language: 'en',
-                imdbRating: '8.0',
-                // הגדרת הווידאו של הפרק הספציפי
-                videos: [
-                    {
-                        id: `${seriesId}:${episodeData.season}:${episodeData.episode}`,
-                        title: episodeData.title || `Episode ${episodeData.episode}`,
-                        released: new Date(episodeData.showYear || 2000, 0, 1).toISOString(),
-                        season: episodeData.season,
-                        episode: episodeData.episode,
-                        overview: episodeData.overview || '',
-                        thumbnail: episodeData.showPoster
+                // שדה מיוחד שיעזור לתוסף streams למצוא את הפרק
+                behaviorHints: {
+                    proxyStreams: {
+                        id: `${seriesImdbId}:${season}:${episodeNum}`
                     }
-                ],
-                links: [
-                    {
-                        name: 'IMDb',
-                        category: 'imdb',
-                        url: `https://www.imdb.com/title/${seriesId}/`
-                    }
-                ]
+                }
             };
 
             return res.send(JSON.stringify({ meta: metaObject }));
@@ -140,6 +114,32 @@ module.exports = async (req, res) => {
         } catch (error) {
             console.error("Error in meta handler:", error);
             return res.status(500).send(JSON.stringify({ error: error.message }));
+        }
+    }
+
+    // Stream Handler - מפנה לתוספי טורנט אחרים
+    if (path.startsWith('/stream/movie/')) {
+        try {
+            const uniqueId = path.split('/')[3].replace('.json', '');
+            const parts = uniqueId.replace('shufl_', '').split('_');
+            const seriesImdbId = parts[0];
+            const season = parseInt(parts[1]);
+            const episodeNum = parseInt(parts[2]);
+            
+            // מחזיר stream שמפנה לפורמט הסטנדרטי
+            const streams = [
+                {
+                    name: '🔄 Click to load streams',
+                    title: 'Loading streams from Torrentio...',
+                    externalUrl: `stremio://detail/series/${seriesImdbId}/season/${season}/episode/${episodeNum}`
+                }
+            ];
+
+            return res.send(JSON.stringify({ streams }));
+
+        } catch (error) {
+            console.error("Error in stream handler:", error);
+            return res.status(500).send(JSON.stringify({ streams: [] }));
         }
     }
 
