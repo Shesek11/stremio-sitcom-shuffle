@@ -3,11 +3,10 @@ const fetch = require('node-fetch');
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '20.0.0',
+    version: '21.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ type: 'movie', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
-    // אנחנו תוסף meta וגם catalog
     resources: ['catalog', 'meta'],
     types: ['movie'],
     idPrefixes: ['tt']
@@ -30,14 +29,12 @@ async function getShuffledEpisodes() {
     return episodes;
 }
 
-// Handler ראשי
 module.exports = async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Content-Type', 'application/json');
 
     const path = req.url.split('?')[0];
-    const pathParts = path.split('/');
 
     if (path === '/manifest.json') {
         return res.send(JSON.stringify(manifest));
@@ -47,15 +44,21 @@ module.exports = async (req, res) => {
     if (path.startsWith('/catalog/movie/shuffled-episodes')) {
         try {
             const allEpisodes = await getShuffledEpisodes();
-            // לקטלוג, נשלח רק את המידע המינימלי
-            const metas = allEpisodes.map(episode => {
-                 if (!episode || !episode.showIds?.imdb) return null;
-                 return {
-                    id: `${episode.showIds.imdb}:${episode.season}:${episode.episode}`,
+            const metas = allEpisodes.map((episode, index) => {
+                if (!episode || !episode.ids?.imdb) return null;
+                
+                // שימוש ב-IMDB ID של הפרק עצמו
+                const episodeImdbId = episode.ids.imdb;
+                
+                return {
+                    id: episodeImdbId,
                     type: 'movie',
-                    name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
-                    poster: episode.showPoster || null
-                 };
+                    name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')} - ${episode.title}`,
+                    poster: episode.showPoster || null,
+                    background: episode.showFanart || null,
+                    description: episode.overview || '',
+                    releaseInfo: `${episode.showYear || ''}`
+                };
             }).filter(Boolean);
             return res.send(JSON.stringify({ metas }));
         } catch (error) {
@@ -67,25 +70,33 @@ module.exports = async (req, res) => {
     // Meta Handler
     if (path.startsWith('/meta/movie/')) {
         try {
-            const fullId = path.split('/')[3].replace('.json', '');
-            const [seriesId, season, episodeNum] = fullId.split(':');
-
+            const episodeImdbId = path.split('/')[3].replace('.json', '');
             const allEpisodes = await getShuffledEpisodes();
-            const episodeData = allEpisodes.find(ep => ep.showIds.imdb === seriesId && ep.season == season && ep.episode == episodeNum);
+            
+            // חיפוש לפי IMDB ID של הפרק
+            const episodeData = allEpisodes.find(ep => ep.ids?.imdb === episodeImdbId);
 
             if (!episodeData) {
                 return res.status(404).send(JSON.stringify({ err: 'Episode not found' }));
             }
             
-            // בניית אובייקט meta מלא עם כל המידע שאספנו
             const metaObject = {
-                id: fullId,
+                id: episodeImdbId,
                 type: 'movie',
-                name: `${episodeData.showTitle} - S${String(season).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')}`,
+                name: `${episodeData.showTitle} - S${String(episodeData.season).padStart(2, '0')}E${String(episodeData.episode).padStart(2, '0')} - ${episodeData.title}`,
                 poster: episodeData.showPoster,
                 background: episodeData.showFanart,
-                description: `This is a random episode from '${episodeData.showTitle}'.\n\nEpisode Title: "${episodeData.title}"\n\n${episodeData.overview}`,
-                releaseInfo: `${episodeData.showYear || ''}`
+                description: `${episodeData.overview || 'No description available'}\n\nShow: ${episodeData.showTitle}\nSeason ${episodeData.season}, Episode ${episodeData.episode}`,
+                releaseInfo: `${episodeData.showYear || ''}`,
+                imdbRating: episodeData.rating || null,
+                // מידע נוסף שיכול לעזור
+                links: [
+                    {
+                        name: "IMDb",
+                        category: "imdb",
+                        url: `https://www.imdb.com/title/${episodeImdbId}/`
+                    }
+                ]
             };
 
             return res.send(JSON.stringify({ meta: metaObject }));
