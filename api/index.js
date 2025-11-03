@@ -3,7 +3,7 @@ const fetch = require('node-fetch');
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '24.0.0',
+    version: '25.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ 
@@ -53,17 +53,20 @@ module.exports = async (req, res) => {
             const metas = allEpisodes.map(episode => {
                 if (!episode || !episode.showIds?.imdb) return null;
                 
-                // יצירת ID בפורמט series:season:episode
                 const metaId = `${episode.showIds.imdb}:${episode.season}:${episode.episode}`;
                 
                 return {
                     id: metaId,
                     type: 'movie',
                     name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')}`,
-                    poster: episode.showPoster,
-                    background: episode.showFanart,
-                    description: `${episode.title}\n\n${episode.overview || ''}\n\nShow: ${episode.showTitle}\nSeason ${episode.season}, Episode ${episode.episode}`,
-                    releaseInfo: String(episode.showYear || '')
+                    poster: episode.showPoster || 'https://via.placeholder.com/300x450/1a1a2e/ffffff?text=No+Poster',
+                    background: episode.showFanart || episode.showPoster,
+                    logo: episode.showPoster,
+                    description: `${episode.title || 'Episode ' + episode.episode}\n\n${episode.overview || ''}\n\n${episode.showTitle} - Season ${episode.season}, Episode ${episode.episode}`,
+                    releaseInfo: String(episode.showYear || ''),
+                    imdbRating: episode.rating || '7.5',
+                    genres: ['Comedy', 'TV Show'],
+                    runtime: '22 min'
                 };
             }).filter(Boolean);
             
@@ -96,23 +99,30 @@ module.exports = async (req, res) => {
             const metaObject = {
                 id: fullId,
                 type: 'movie',
-                name: `${episodeData.showTitle} - S${String(season).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')}`,
-                poster: episodeData.showPoster,
-                background: episodeData.showFanart,
-                description: `**${episodeData.title}**\n\n${episodeData.overview || 'No description available'}\n\n━━━━━━━━━━\n📺 ${episodeData.showTitle}\n📅 Season ${season}, Episode ${episodeNum}\n🎬 ${episodeData.showYear || 'N/A'}`,
+                name: `${episodeData.showTitle} - S${String(season).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')} - ${episodeData.title || 'Episode ' + episodeNum}`,
+                poster: episodeData.showPoster || 'https://via.placeholder.com/300x450/1a1a2e/ffffff?text=No+Poster',
+                background: episodeData.showFanart || episodeData.showPoster || 'https://via.placeholder.com/1920x1080/1a1a2e/ffffff?text=No+Background',
+                logo: episodeData.showPoster,
+                description: `**${episodeData.title || 'Episode ' + episodeNum}**\n\n${episodeData.overview || 'No description available.'}\n\n━━━━━━━━━━━━━━\n📺 Show: ${episodeData.showTitle}\n📅 Season ${season}, Episode ${episodeNum}\n🎬 Year: ${episodeData.showYear || 'N/A'}`,
                 releaseInfo: String(episodeData.showYear || ''),
+                imdbRating: episodeData.rating || '7.5',
+                genres: ['Comedy', 'TV Show'],
+                runtime: '22 min',
+                country: 'USA',
+                language: 'English',
+                director: [],
+                cast: [],
                 links: [
-                    {
-                        name: 'IMDb Episode',
-                        category: 'imdb',
-                        url: `https://www.imdb.com/title/${episodeData.ids?.imdb || seriesImdbId}/`
-                    },
                     {
                         name: 'IMDb Series',
                         category: 'imdb',
-                        url: `https://www.imdb.com/title/${seriesImdbId}/`
+                        url: `https://www.imdb.com/title/${seriesImdbId}/episodes?season=${season}`
                     }
-                ]
+                ],
+                behaviorHints: {
+                    defaultVideoId: null,
+                    hasScheduledVideos: false
+                }
             };
 
             return res.send(JSON.stringify({ meta: metaObject }));
