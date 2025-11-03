@@ -3,13 +3,13 @@ const fetch = require('node-fetch');
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '21.0.0',
+    version: '22.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ type: 'movie', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
     resources: ['catalog', 'meta'],
     types: ['movie'],
-    idPrefixes: ['tt']
+    idPrefixes: ['shuffle_']
 };
 
 let allEpisodesCache = null;
@@ -47,11 +47,11 @@ module.exports = async (req, res) => {
             const metas = allEpisodes.map((episode, index) => {
                 if (!episode || !episode.ids?.imdb) return null;
                 
-                // שימוש ב-IMDB ID של הפרק עצמו
-                const episodeImdbId = episode.ids.imdb;
+                // ID מותאם אישית שכולל את מזהה הפרק עצמו
+                const customId = `shuffle_${episode.ids.imdb}`;
                 
                 return {
-                    id: episodeImdbId,
+                    id: customId,
                     type: 'movie',
                     name: `${episode.showTitle} - S${String(episode.season).padStart(2, '0')}E${String(episode.episode).padStart(2, '0')} - ${episode.title}`,
                     poster: episode.showPoster || null,
@@ -70,26 +70,38 @@ module.exports = async (req, res) => {
     // Meta Handler
     if (path.startsWith('/meta/movie/')) {
         try {
-            const episodeImdbId = path.split('/')[3].replace('.json', '');
-            const allEpisodes = await getShuffledEpisodes();
+            const fullId = path.split('/')[3].replace('.json', '');
             
-            // חיפוש לפי IMDB ID של הפרק
+            // הסרת הפריפיקס shuffle_
+            const episodeImdbId = fullId.replace('shuffle_', '');
+            
+            const allEpisodes = await getShuffledEpisodes();
             const episodeData = allEpisodes.find(ep => ep.ids?.imdb === episodeImdbId);
 
             if (!episodeData) {
                 return res.status(404).send(JSON.stringify({ err: 'Episode not found' }));
             }
             
+            // בניית meta עם videos שמפנה לפרק האמיתי
             const metaObject = {
-                id: episodeImdbId,
+                id: fullId,
                 type: 'movie',
                 name: `${episodeData.showTitle} - S${String(episodeData.season).padStart(2, '0')}E${String(episodeData.episode).padStart(2, '0')} - ${episodeData.title}`,
                 poster: episodeData.showPoster,
                 background: episodeData.showFanart,
                 description: `${episodeData.overview || 'No description available'}\n\nShow: ${episodeData.showTitle}\nSeason ${episodeData.season}, Episode ${episodeData.episode}`,
                 releaseInfo: `${episodeData.showYear || ''}`,
-                imdbRating: episodeData.rating || null,
-                // מידע נוסף שיכול לעזור
+                // זה החלק החשוב - videos שמפנה למזהה האמיתי של הפרק
+                videos: [
+                    {
+                        id: episodeImdbId,
+                        title: episodeData.title,
+                        season: episodeData.season,
+                        episode: episodeData.episode,
+                        released: episodeData.released || null,
+                        overview: episodeData.overview || ''
+                    }
+                ],
                 links: [
                     {
                         name: "IMDb",
