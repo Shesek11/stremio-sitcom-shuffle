@@ -96,11 +96,26 @@ module.exports = async (req, res) => {
         const shuffledEpisodes = shuffleArray(allEpisodes);
         console.log(`Fetched and shuffled ${shuffledEpisodes.length} episodes.`);
         const jsonContent = JSON.stringify(shuffledEpisodes);
-        console.log('Uploading shuffled list to Vercel Blob...');
-        const blob = await put('shuffled-episodes.json', jsonContent, { access: 'public', contentType: 'application/json', cacheControl: 'max-age=0, no-cache, no-store, must-revalidate', allowOverwrite: true });
+
+        // ===================================================================
+        // ========== התיקון: יצירת שם קובץ ייחודי ושמירתו ==========
+        // ===================================================================
+        const uniqueFilename = `shuffled-episodes-${Date.now()}.json`;
+        console.log(`Uploading shuffled list to Vercel Blob with unique name: ${uniqueFilename}`);
+        
+        const blob = await put(uniqueFilename, jsonContent, {
+            access: 'public',
+            contentType: 'application/json'
+        });
+        // ===================================================================
+
         console.log('Upload complete. Blob URL:', blob.url);
+
+        // עדכון הכתובת ב-KV לכתובת של הקובץ החדש והייחודי
         await kv.set('episodes_blob_url', blob.url);
+        
         res.status(200).json({ message: 'Success', url: blob.url, count: shuffledEpisodes.length });
+
     } catch (error) {
         console.error('Cron job failed:', error);
         res.status(500).json({ message: 'Failed', error: error.message });
