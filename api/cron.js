@@ -107,17 +107,8 @@ async function getShowsFromList() {
     return items.map(item => item.show);
 }
 
-async function getShowEpisodes(showSlug) {
+async function getShowEpisodes(showSlug, headers) {
     const url = `https://api.trakt.tv/shows/${showSlug}/seasons?extended=episodes`;
-    // Note: optimization - we assume headers are valid from getShowsFromList, 
-    // but individually wrapping every call safely is safer. For now using standard headers.
-    // If getShowsFromList succeeded, the token should be valid for a while.
-    const headers = await getValidToken().then(token => ({
-        'Content-Type': 'application/json',
-        'trakt-api-version': '2',
-        'trakt-api-key': CONFIG.TRAKT_CLIENT_ID,
-        'Authorization': `Bearer ${token}`
-    }));
 
     const response = await fetch(url, { headers });
     if (!response.ok) {
@@ -147,6 +138,11 @@ async function getAllEpisodesOptimized() {
     console.log('Fetching shows from Trakt list...');
     const shows = await getShowsFromList();
     console.log(`Found ${shows.length} shows.`);
+
+    // Fetch headers ONCE here and reuse for all subsequent calls
+    const headers = await getTraktHeaders();
+    console.log('Trakt headers fetched successfully, proceeding to fetch episodes.');
+
     const allEpisodes = [];
     const batchSize = 5;
 
@@ -154,7 +150,7 @@ async function getAllEpisodesOptimized() {
         const batch = shows.slice(i, i + batchSize);
         console.log(`Processing batch ${Math.floor(i / batchSize) + 1}...`);
         const batchPromises = batch.map(async (show) => {
-            const episodes = await getShowEpisodes(show.ids.slug);
+            const episodes = await getShowEpisodes(show.ids.slug, headers);
             episodes.forEach(ep => {
                 ep.showTitle = show.title;
                 ep.showYear = show.year;
