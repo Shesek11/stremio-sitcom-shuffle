@@ -6,9 +6,10 @@ const CONFIG = {
     TRAKT_USERNAME: process.env.TRAKT_USERNAME,
     TRAKT_LIST_SLUG: process.env.TRAKT_LIST_SLUG,
     TRAKT_CLIENT_ID: process.env.TRAKT_CLIENT_ID,
-    TRAKT_CLIENT_SECRET: process.env.TRAKT_CLIENT_SECRET, // Required for refresh
-    TRAKT_ACCESS_TOKEN: process.env.TRAKT_ACCESS_TOKEN, // Initial fallback
-    TRAKT_REFRESH_TOKEN: process.env.TRAKT_REFRESH_TOKEN // Initial fallback
+    TRAKT_CLIENT_SECRET: process.env.TRAKT_CLIENT_SECRET,
+    TRAKT_ACCESS_TOKEN: process.env.TRAKT_ACCESS_TOKEN,
+    TRAKT_REFRESH_TOKEN: process.env.TRAKT_REFRESH_TOKEN,
+    TMDB_API_KEY: process.env.TMDB_API_KEY
 };
 
 async function getValidToken() {
@@ -84,7 +85,7 @@ async function getTraktHeaders(attemptRefresh = false) {
 }
 
 async function getShowsFromList() {
-    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows?extended=images`;
+    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
 
     let headers;
     try {
@@ -120,18 +121,33 @@ async function getShowEpisodes(showSlug, headers) {
     for (const season of seasons) {
         if (season.number === 0) continue;
         for (const episode of season.episodes || []) {
-            if (episode.ids && episode.ids.imdb) {
-                episodes.push({
-                    season: season.number,
-                    episode: episode.number,
-                    title: episode.title || `Episode ${episode.number}`,
-                    overview: episode.overview || '',
-                    ids: episode.ids
-                });
-            }
+            episodes.push({
+                season: season.number,
+                episode: episode.number,
+                title: episode.title || `Episode ${episode.number}`,
+                overview: episode.overview || '',
+                ids: episode.ids || {}
+            });
         }
     }
     return episodes;
+}
+
+async function getTmdbImages(tmdbId) {
+    if (!tmdbId || !CONFIG.TMDB_API_KEY) return { poster: null, fanart: null };
+    try {
+        const url = `https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${CONFIG.TMDB_API_KEY}`;
+        const response = await fetch(url);
+        if (!response.ok) return { poster: null, fanart: null };
+        const data = await response.json();
+        return {
+            poster: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : null,
+            fanart: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : null
+        };
+    } catch (e) {
+        console.error(`TMDB fetch failed for ${tmdbId}:`, e.message);
+        return { poster: null, fanart: null };
+    }
 }
 
 async function getAllEpisodesOptimized() {
@@ -139,9 +155,22 @@ async function getAllEpisodesOptimized() {
     const shows = await getShowsFromList();
     console.log(`Found ${shows.length} shows.`);
 
-    // Fetch headers ONCE here and reuse for all subsequent calls
     const headers = await getTraktHeaders();
     console.log('Trakt headers fetched successfully, proceeding to fetch episodes.');
+
+    // Fetch TMDB images for all shows (batched to avoid rate limits)
+    console.log('Fetching TMDB images for all shows...');
+    const imageCache = {};
+    const tmdbBatchSize = 5;
+    for (let i = 0; i < shows.length; i += tmdbBatchSize) {
+        const batch = shows.slice(i, i + tmdbBatchSize);
+        const imagePromises = batch.map(async (show) => {
+            const images = await getTmdbImages(show.ids?.tmdb);
+            imageCache[show.ids.slug] = images;
+        });
+        await Promise.all(imagePromises);
+    }
+    console.log('TMDB images fetched.');
 
     const allEpisodes = [];
     const batchSize = 5;
@@ -151,14 +180,13 @@ async function getAllEpisodesOptimized() {
         console.log(`Processing batch ${Math.floor(i / batchSize) + 1}...`);
         const batchPromises = batch.map(async (show) => {
             const episodes = await getShowEpisodes(show.ids.slug, headers);
+            const images = imageCache[show.ids.slug] || { poster: null, fanart: null };
             episodes.forEach(ep => {
                 ep.showTitle = show.title;
                 ep.showYear = show.year;
                 ep.showIds = show.ids;
-                const posterUrl = show.images?.poster?.thumb;
-                const fanartUrl = show.images?.fanart?.thumb;
-                ep.showPoster = posterUrl ? posterUrl.replace('medium.jpg', 'full.jpg') : null;
-                ep.showFanart = fanartUrl ? fanartUrl.replace('medium.jpg', 'full.jpg') : null;
+                ep.showPoster = images.poster;
+                ep.showFanart = images.fanart;
             });
             return episodes;
         });
