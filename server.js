@@ -3,10 +3,14 @@ const fetch = require('node-fetch');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '.env') });
+// Load .env from project dir first, fallback to home dir (survives xCloud deploys)
+const envLocal = path.join(__dirname, '.env');
+const envHome = path.join(require('os').homedir(), '.env');
+require('dotenv').config({ path: fs.existsSync(envLocal) ? envLocal : envHome });
 
 const PORT = process.env.PORT || 3020;
-const DATA_DIR = path.join(__dirname, 'data');
+// Store data in home dir so it persists across xCloud deploys
+const DATA_DIR = path.join(require('os').homedir(), 'data');
 const EPISODES_FILE = path.join(DATA_DIR, 'episodes.json');
 const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json');
 
