@@ -65,7 +65,7 @@ async function refreshTraktToken() {
 
     const response = await fetch('https://api.trakt.tv/oauth/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'SitcomShuffle/23.0' },
         body: JSON.stringify({
             refresh_token: refreshToken,
             client_id: CONFIG.TRAKT_CLIENT_ID,
@@ -89,6 +89,7 @@ async function refreshTraktToken() {
 function getTraktHeaders(token) {
     return {
         'Content-Type': 'application/json',
+        'User-Agent': 'SitcomShuffle/23.0',
         'trakt-api-version': '2',
         'trakt-api-key': CONFIG.TRAKT_CLIENT_ID,
         'Authorization': `Bearer ${token}`
