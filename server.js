@@ -101,8 +101,8 @@ async function traktFetch(url) {
 
     let response = await fetch(url, { headers: getTraktHeaders(token) });
 
-    if (response.status === 401) {
-        console.log('Trakt 401, refreshing token...');
+    if (response.status === 401 || response.status === 403) {
+        console.log(`Trakt ${response.status}, refreshing token...`);
         token = await refreshTraktToken();
         response = await fetch(url, { headers: getTraktHeaders(token) });
     }
