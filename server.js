@@ -3,7 +3,7 @@ const fetch = require('node-fetch');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const PORT = process.env.PORT || 3020;
 const DATA_DIR = path.join(__dirname, 'data');
