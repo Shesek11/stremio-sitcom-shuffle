@@ -263,11 +263,11 @@ function loadEpisodes() {
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '23.1.0',
+    version: '23.2.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ type: 'series', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
-    resources: ['catalog', 'meta'],
+    resources: ['catalog', 'meta', 'stream'],
     types: ['series'],
     idPrefixes: ['scs']
 };
@@ -278,6 +278,9 @@ app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Headers', '*');
     res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     console.log(`${req.method} ${req.url}`);
     next();
 });
@@ -342,6 +345,11 @@ app.get('/meta/:type/:id.json', (req, res) => {
             }]
         }
     });
+});
+
+// Stream resource — return empty so TV clients don't error out
+app.get('/stream/:type/:id.json', (req, res) => {
+    res.json({ streams: [] });
 });
 
 // Manual trigger for reshuffle
