@@ -282,6 +282,11 @@ app.use((req, res, next) => {
     next();
 });
 
+// Root path — Stremio TV uses this as health check, redirect to manifest
+app.get('/', (req, res) => {
+    res.json(manifest);
+});
+
 app.get('/manifest.json', (req, res) => {
     res.json(manifest);
 });
