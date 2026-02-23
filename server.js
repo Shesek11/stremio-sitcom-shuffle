@@ -3,6 +3,7 @@ const fetch = require('node-fetch');
 const cron = require('node-cron');
 const fs = require('fs');
 const path = require('path');
+const { addonBuilder, getRouter } = require('stremio-addon-sdk');
 // Load .env from project dir first, fallback to home dir (survives xCloud deploys)
 const envLocal = path.join(__dirname, '.env');
 const envHome = path.join(require('os').homedir(), '.env');
@@ -259,11 +260,13 @@ function loadEpisodes() {
     return [];
 }
 
-// ======================== STREMIO ADDON ========================
+// ======================== STREMIO ADDON (SDK) ========================
 
-const manifest = {
+const CATALOG_PAGE_SIZE = 100;
+
+const addon = new addonBuilder({
     id: 'community.sitcom.shuffle',
-    version: '23.3.0',
+    version: '24.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{
@@ -275,34 +278,10 @@ const manifest = {
     resources: ['catalog', 'meta', 'stream'],
     types: ['series'],
     idPrefixes: ['scs']
-};
-
-const app = express();
-
-app.use((req, res, next) => {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Headers', '*');
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-    console.log(`${req.method} ${req.url}`);
-    next();
 });
 
-// Root path — Stremio TV uses this as health check, redirect to manifest
-app.get('/', (req, res) => {
-    res.json(manifest);
-});
-
-app.get('/manifest.json', (req, res) => {
-    res.json(manifest);
-});
-
-const CATALOG_PAGE_SIZE = 100;
-
-app.get('/catalog/series/shuffled-episodes/:extra?.json', (req, res) => {
-    const skip = parseInt((req.params.extra || '').replace('skip=', '')) || 0;
+addon.defineCatalogHandler(({ type, id, extra }) => {
+    const skip = parseInt(extra?.skip) || 0;
     const episodes = loadEpisodes();
     const metas = episodes
         .filter(ep => ep?.showIds?.imdb)
@@ -311,17 +290,15 @@ app.get('/catalog/series/shuffled-episodes/:extra?.json', (req, res) => {
             id: `scs:${ep.showIds.imdb}:${ep.season}:${ep.episode}`,
             type: 'series',
             name: `${ep.showTitle} - S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')}`,
-            poster: ep.showPoster || null
+            poster: ep.showPoster || undefined
         }));
-    res.json({ metas });
+    return Promise.resolve({ metas });
 });
 
-app.get('/meta/:type/:id.json', (req, res) => {
-    const fullId = req.params.id;
+addon.defineMetaHandler(({ type, id }) => {
+    if (!id.startsWith('scs:')) return Promise.resolve({ meta: null });
 
-    if (!fullId.startsWith('scs:')) return res.status(404).json({ error: 'Not Found' });
-
-    const parts = fullId.substring(4).split(':');
+    const parts = id.substring(4).split(':');
     const [seriesId, season, episodeNum] = parts;
 
     const episodes = loadEpisodes();
@@ -329,17 +306,17 @@ app.get('/meta/:type/:id.json', (req, res) => {
         e => e.showIds.imdb === seriesId && e.season == season && e.episode == episodeNum
     );
 
-    if (!ep) return res.status(404).json({ error: 'Episode not found' });
+    if (!ep) return Promise.resolve({ meta: null });
 
-    res.json({
+    return Promise.resolve({
         meta: {
-            id: fullId,
+            id: id,
             type: 'series',
             name: `${ep.showTitle} - S${String(season).padStart(2, '0')}E${String(episodeNum).padStart(2, '0')}`,
-            poster: ep.showPoster || null,
-            background: ep.showFanart || null,
+            poster: ep.showPoster || undefined,
+            background: ep.showFanart || undefined,
             description: `${ep.showTitle}\n\nEpisode: "${ep.title}"\n\n${ep.overview || ''}`,
-            releaseInfo: `${ep.showYear || ''}`,
+            releaseInfo: String(ep.showYear || ''),
             videos: [{
                 id: `${seriesId}:${season}:${episodeNum}`,
                 title: ep.title || `Episode ${episodeNum}`,
@@ -352,13 +329,26 @@ app.get('/meta/:type/:id.json', (req, res) => {
     });
 });
 
-// Stream resource — return empty so TV clients don't error out
-app.get('/stream/:type/:id.json', (req, res) => {
-    res.json({ streams: [] });
+addon.defineStreamHandler(({ type, id }) => {
+    return Promise.resolve({ streams: [] });
 });
+
+// ======================== EXPRESS SERVER ========================
+
+const app = express();
+
+// Request logging
+app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url}`);
+    next();
+});
+
+// Mount the SDK router (handles manifest, catalog, meta, stream, CORS)
+app.use('/', getRouter(addon.getInterface()));
 
 // Manual trigger for reshuffle
 app.get('/reshuffle', async (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
     try {
         const count = await fetchAndShuffle();
         res.json({ success: true, count });
