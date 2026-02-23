@@ -344,7 +344,14 @@ app.use((req, res, next) => {
 });
 
 // Mount the SDK router (handles manifest, catalog, meta, stream, CORS)
-app.use('/', getRouter(addon.getInterface()));
+const addonInterface = addon.getInterface();
+app.use('/', getRouter(addonInterface));
+
+// Root path health check (TV clients check this)
+app.get('/', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.json(addonInterface.manifest);
+});
 
 // Manual trigger for reshuffle
 app.get('/reshuffle', async (req, res) => {
