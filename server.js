@@ -285,10 +285,14 @@ app.get('/manifest.json', (req, res) => {
     res.json(manifest);
 });
 
-app.get('/catalog/series/shuffled-episodes.json', (req, res) => {
+const CATALOG_PAGE_SIZE = 100;
+
+app.get('/catalog/series/shuffled-episodes/:extra?.json', (req, res) => {
+    const skip = parseInt((req.params.extra || '').replace('skip=', '')) || 0;
     const episodes = loadEpisodes();
     const metas = episodes
         .filter(ep => ep?.showIds?.imdb)
+        .slice(skip, skip + CATALOG_PAGE_SIZE)
         .map(ep => ({
             id: `scs:${ep.showIds.imdb}:${ep.season}:${ep.episode}`,
             type: 'series',
