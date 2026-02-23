@@ -263,7 +263,7 @@ function loadEpisodes() {
 
 const manifest = {
     id: 'community.sitcom.shuffle',
-    version: '23.0.0',
+    version: '23.1.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{ type: 'series', id: 'shuffled-episodes', name: 'Shuffled Sitcom Episodes' }],
