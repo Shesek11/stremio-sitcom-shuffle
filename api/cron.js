@@ -85,7 +85,7 @@ async function getTraktHeaders(attemptRefresh = false) {
 }
 
 async function getShowsFromList() {
-    const baseUrl = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
+    const baseUrl = `https://api.trakt.tv/users/me/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
 
     let headers;
     try {

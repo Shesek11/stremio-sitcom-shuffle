@@ -66,7 +66,7 @@ async function refreshTraktToken() {
 
     const response = await fetch('https://api.trakt.tv/oauth/token', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'SitcomShuffle/23.0' },
+        headers: { 'Content-Type': 'application/json', 'User-Agent': 'SitcomShuffle/24.0 (+https://github.com/Shesek11/stremio-sitcom-shuffle)' },
         body: JSON.stringify({
             refresh_token: refreshToken,
             client_id: CONFIG.TRAKT_CLIENT_ID,
@@ -90,7 +90,7 @@ async function refreshTraktToken() {
 function getTraktHeaders(token) {
     return {
         'Content-Type': 'application/json',
-        'User-Agent': 'SitcomShuffle/23.0',
+        'User-Agent': 'SitcomShuffle/24.0 (+https://github.com/Shesek11/stremio-sitcom-shuffle)',
         'trakt-api-version': '2',
         'trakt-api-key': CONFIG.TRAKT_CLIENT_ID,
         'Authorization': `Bearer ${token}`
@@ -149,7 +149,7 @@ async function traktFetchPaginated(url) {
 }
 
 async function getShowsFromList() {
-    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
+    const url = `https://api.trakt.tv/users/me/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
     const items = await traktFetchPaginated(url);
     return items.map(item => item.show);
 }
