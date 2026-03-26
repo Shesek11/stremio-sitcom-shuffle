@@ -113,9 +113,44 @@ async function traktFetch(url) {
     return response.json();
 }
 
+async function traktFetchPaginated(url) {
+    const allItems = [];
+    let page = 1;
+    const limit = 100;
+
+    while (true) {
+        const separator = url.includes('?') ? '&' : '?';
+        const pagedUrl = `${url}${separator}page=${page}&limit=${limit}`;
+
+        let token = getAccessToken();
+        if (!token) token = await refreshTraktToken();
+
+        let response = await fetch(pagedUrl, { headers: getTraktHeaders(token) });
+
+        if (response.status === 401 || response.status === 403) {
+            console.log(`Trakt ${response.status}, refreshing token...`);
+            token = await refreshTraktToken();
+            response = await fetch(pagedUrl, { headers: getTraktHeaders(token) });
+        }
+
+        if (!response.ok) throw new Error(`Trakt API error: ${response.status} ${response.statusText}`);
+
+        const items = await response.json();
+        allItems.push(...items);
+
+        const totalPages = parseInt(response.headers.get('x-pagination-page-count') || '1');
+        console.log(`Trakt pagination: page ${page}/${totalPages}, got ${items.length} items`);
+
+        if (page >= totalPages || items.length === 0) break;
+        page++;
+    }
+
+    return allItems;
+}
+
 async function getShowsFromList() {
     const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
-    const items = await traktFetch(url);
+    const items = await traktFetchPaginated(url);
     return items.map(item => item.show);
 }
 

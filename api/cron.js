@@ -85,7 +85,7 @@ async function getTraktHeaders(attemptRefresh = false) {
 }
 
 async function getShowsFromList() {
-    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
+    const baseUrl = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
 
     let headers;
     try {
@@ -95,17 +95,32 @@ async function getShowsFromList() {
         headers = await getTraktHeaders(true);
     }
 
-    let response = await fetch(url, { headers });
+    const allItems = [];
+    let page = 1;
+    const limit = 100;
 
-    if (response.status === 401) {
-        console.log('Trakt API returned 401, refreshing token...');
-        headers = await getTraktHeaders(true);
-        response = await fetch(url, { headers });
+    while (true) {
+        const url = `${baseUrl}?page=${page}&limit=${limit}`;
+        let response = await fetch(url, { headers });
+
+        if (response.status === 401) {
+            console.log('Trakt API returned 401, refreshing token...');
+            headers = await getTraktHeaders(true);
+            response = await fetch(url, { headers });
+        }
+
+        if (!response.ok) throw new Error(`Failed to fetch Trakt list: ${response.statusText}`);
+        const items = await response.json();
+        allItems.push(...items);
+
+        const totalPages = parseInt(response.headers.get('x-pagination-page-count') || '1');
+        console.log(`Trakt pagination: page ${page}/${totalPages}, got ${items.length} items`);
+
+        if (page >= totalPages || items.length === 0) break;
+        page++;
     }
 
-    if (!response.ok) throw new Error(`Failed to fetch Trakt list: ${response.statusText}`);
-    const items = await response.json();
-    return items.map(item => item.show);
+    return allItems.map(item => item.show);
 }
 
 async function getShowEpisodes(showSlug, headers) {
