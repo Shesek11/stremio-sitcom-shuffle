@@ -315,11 +315,21 @@ const addon = new addonBuilder({
     idPrefixes: ['scs']
 });
 
+// Re-shuffle on each fresh catalog open so the user sees a different mix every
+// time, instead of the same first few episodes. The cron only fetches data
+// (every 6h); shuffling here decouples variety from that slow refresh.
+let catalogCache = [];
+
 addon.defineCatalogHandler(({ type, id, extra }) => {
     const skip = parseInt(extra?.skip) || 0;
-    const episodes = loadEpisodes();
-    const metas = episodes
-        .filter(ep => ep?.showIds?.imdb)
+
+    // skip=0 marks the start of a new scroll: re-shuffle and cache the order.
+    // skip>0 pages through the cached order so pagination stays consistent.
+    if (skip === 0 || catalogCache.length === 0) {
+        catalogCache = fairShuffle(loadEpisodes().filter(ep => ep?.showIds?.imdb));
+    }
+
+    const metas = catalogCache
         .slice(skip, skip + CATALOG_PAGE_SIZE)
         .map(ep => ({
             id: `scs:${ep.showIds.imdb}:${ep.season}:${ep.episode}`,
