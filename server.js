@@ -301,7 +301,7 @@ const CATALOG_PAGE_SIZE = 100;
 
 const addon = new addonBuilder({
     id: 'community.sitcom.shuffle',
-    version: '24.0.0',
+    version: '25.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{
@@ -309,6 +309,10 @@ const addon = new addonBuilder({
         id: 'shuffled-episodes',
         name: 'Shuffled Sitcom Episodes',
         extra: [{ name: 'skip' }]
+    }, {
+        type: 'series',
+        id: 'shuffle-binge',
+        name: 'Sitcom Shuffle (Binge / Autoplay)'
     }],
     resources: ['catalog', 'meta', 'stream'],
     types: ['series'],
@@ -320,7 +324,30 @@ const addon = new addonBuilder({
 // (every 6h); shuffling here decouples variety from that slow refresh.
 let catalogCache = [];
 
+// Binge series: the whole shuffle as ONE series so Stremio autoplays the next
+// episode. The order is re-shuffled each time the binge catalog is opened (same
+// "fresh mix every time" idea as the regular catalog), and cached so the order
+// stays stable while you watch. meta handler reads this cache.
+let bingeCache = [];
+
+function buildBingeOrder() {
+    bingeCache = fairShuffle(loadEpisodes().filter(ep => ep?.showIds?.imdb));
+    return bingeCache;
+}
+
 addon.defineCatalogHandler(({ type, id, extra }) => {
+    // Binge catalog: one tile that opens the single autoplay series.
+    if (id === 'shuffle-binge') {
+        buildBingeOrder(); // re-shuffle on open
+        const poster = bingeCache.find(ep => ep.showPoster)?.showPoster;
+        return Promise.resolve({ metas: [{
+            id: 'scs:binge',
+            type: 'series',
+            name: 'Sitcom Shuffle (Binge / Autoplay)',
+            poster: poster || undefined
+        }] });
+    }
+
     const skip = parseInt(extra?.skip) || 0;
 
     // skip=0 marks the start of a new scroll: re-shuffle and cache the order.
@@ -342,6 +369,30 @@ addon.defineCatalogHandler(({ type, id, extra }) => {
 
 addon.defineMetaHandler(({ type, id }) => {
     if (!id.startsWith('scs:')) return Promise.resolve({ meta: null });
+
+    // Binge series: all shuffled episodes as one series, numbered S01E01..N so
+    // Stremio plays them in order with autoplay. Each video.id keeps the real
+    // imdb:season:episode so external stream addons (Torrentio etc.) resolve it.
+    if (id === 'scs:binge') {
+        if (bingeCache.length === 0) buildBingeOrder(); // cold start / direct open
+        const poster = bingeCache.find(ep => ep.showPoster)?.showPoster;
+        const videos = bingeCache.map((ep, i) => ({
+            id: `${ep.showIds.imdb}:${ep.season}:${ep.episode}`,
+            title: `${ep.showTitle} - S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')}${ep.title ? ` - ${ep.title}` : ''}`,
+            season: 1,
+            episode: i + 1,
+            released: new Date().toISOString(),
+            overview: ep.overview || ''
+        }));
+        return Promise.resolve({ meta: {
+            id: 'scs:binge',
+            type: 'series',
+            name: 'Sitcom Shuffle (Binge / Autoplay)',
+            poster: poster || undefined,
+            description: `${videos.length} shuffled episodes in a row, with autoplay.`,
+            videos
+        } });
+    }
 
     const parts = id.substring(4).split(':');
     const [seriesId, season, episodeNum] = parts;

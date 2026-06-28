@@ -17,6 +17,19 @@ it so you keep discovering different episodes instead of seeing the same few.
    so the top of the list changes on each open. Scrolling further (`skip>0`) reads
    from a cached order so pagination stays consistent during a single scroll.
 
+### Two ways to watch
+
+The addon ships **two catalogs**:
+
+- **Shuffled Sitcom Episodes** — the original view. Each episode is its own tile;
+  pick one at a time. Re-shuffles on every open.
+- **Sitcom Shuffle (Binge / Autoplay)** — a single `series` (`scs:binge`) containing
+  every shuffled episode as a sequential `S01E01..N` video. Open it once and Stremio
+  plays through them with **autoplay** ("next episode" after each). The binge order is
+  re-shuffled each time you open the binge catalog, so a fresh mix is a re-open away.
+  Each video keeps its real `imdb:season:episode` id, so stream addons (Torrentio,
+  etc.) resolve playback the same as for the per-episode catalog.
+
 ### Fair shuffle algorithm
 
 `fairShuffle` groups episodes by show, shuffles each show's episodes internally,

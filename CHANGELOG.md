@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Binge / autoplay series.** A second catalog, *Sitcom Shuffle (Binge / Autoplay)*,
+  exposes the whole shuffle as a single `series` (`scs:binge`) with every episode as a
+  sequential video (`S01E01..N`). Stremio plays them in order and autoplays the next
+  episode after each one. Each video keeps its real `imdb:season:episode` id, so
+  external stream addons (Torrentio, etc.) resolve playback exactly as before. The
+  original per-episode catalog is unchanged and lives alongside it. The binge order is
+  re-shuffled every time the binge catalog is opened and cached so the order stays
+  stable mid-watch. Addon version bumped to `25.0.0` so Stremio picks up the new catalog.
+
 ### Fixed
 
 - **Shuffle felt static — same few episodes always at the top.** The shuffle was
