@@ -439,6 +439,14 @@ app.use((req, res, next) => {
     next();
 });
 
+// Force Stremio to re-request the catalog on every open instead of serving its
+// own cached copy — otherwise the re-shuffle never reaches the user. Scoped to
+// catalog only; episode meta stays cacheable.
+app.use((req, res, next) => {
+    if (req.url.includes('/catalog/')) res.setHeader('Cache-Control', 'no-store, max-age=0');
+    next();
+});
+
 // Mount the SDK router (handles manifest, catalog, meta, stream, CORS)
 const addonInterface = addon.getInterface();
 app.use('/', getRouter(addonInterface));
