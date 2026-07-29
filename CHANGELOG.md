@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Haverot (חברות) never appeared in the catalog.** Trakt and TMDB have no IMDB id
+  for the show even though IMDB lists it (`tt3046098`), and the catalog filters out
+  episodes without an IMDB id. Added a local `IMDB_OVERRIDES` map that fills in
+  missing IMDB ids at fetch time; Haverot's 51 episodes now enter the shuffle.
+
 - **Shuffle felt static — same few episodes always at the top.** The shuffle was
   coupled to the Trakt data fetch, which only runs every 6 hours (and may not run at
   all if the cron isn't persisted), so the stored list stayed frozen between fetches.

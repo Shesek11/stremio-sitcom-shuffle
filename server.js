@@ -148,10 +148,22 @@ async function traktFetchPaginated(url) {
     return allItems;
 }
 
+// Trakt/TMDB are missing IMDB ids for some Israeli shows even when IMDB has
+// them; without an imdb id the catalog filters the show out entirely.
+const IMDB_OVERRIDES = {
+    'haverot-2013': 'tt3046098'
+};
+
 async function getShowsFromList() {
     const url = `https://api.trakt.tv/users/me/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
     const items = await traktFetchPaginated(url);
-    return items.map(item => item.show);
+    return items.map(item => {
+        const show = item.show;
+        if (!show.ids.imdb && IMDB_OVERRIDES[show.ids.slug]) {
+            show.ids.imdb = IMDB_OVERRIDES[show.ids.slug];
+        }
+        return show;
+    });
 }
 
 async function getShowEpisodes(showSlug) {
