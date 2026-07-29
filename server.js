@@ -155,6 +155,11 @@ const IMDB_OVERRIDES = {
     '2015-217906': 'tt4792146' // Prudim (פרודים)
 };
 
+// Posters for shows TMDB has no artwork for (taken from IMDB).
+const POSTER_OVERRIDES = {
+    '2015-217906': 'https://m.media-amazon.com/images/M/MV5BZGUxNjlmYTItZTM1MS00ZTllLWI1NDYtOTJhOWMxMWY0YmZjXkEyXkFqcGc@._V1_SX500.jpg'
+};
+
 async function getShowsFromList() {
     const url = `https://api.trakt.tv/users/me/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
     const items = await traktFetchPaginated(url);
@@ -266,7 +271,11 @@ async function fetchAndShuffle() {
     for (let i = 0; i < shows.length; i += 5) {
         const batch = shows.slice(i, i + 5);
         await Promise.all(batch.map(async (show) => {
-            imageCache[show.ids.slug] = await getTmdbImages(show.ids?.tmdb);
+            const images = await getTmdbImages(show.ids?.tmdb);
+            if (!images.poster && POSTER_OVERRIDES[show.ids.slug]) {
+                images.poster = POSTER_OVERRIDES[show.ids.slug];
+            }
+            imageCache[show.ids.slug] = images;
         }));
     }
 
