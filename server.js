@@ -151,7 +151,8 @@ async function traktFetchPaginated(url) {
 // Trakt/TMDB are missing IMDB ids for some Israeli shows even when IMDB has
 // them; without an imdb id the catalog filters the show out entirely.
 const IMDB_OVERRIDES = {
-    'haverot-2013': 'tt3046098'
+    'haverot-2013': 'tt3046098',
+    '2015-217906': 'tt4792146' // Prudim (פרודים)
 };
 
 async function getShowsFromList() {
