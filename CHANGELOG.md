@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hands-free binge: built-in stream aggregation.** Binge episodes now use a
+  `scs:`-prefixed video id, so their stream requests route to this addon instead of
+  showing every installed addon's list. The addon fetches streams from upstream
+  addons itself (`UPSTREAM_ADDONS` env — comma-separated base URLs in priority
+  order, default Torrentio), returns them in that order, and tags every stream with
+  a constant `behaviorHints.bingeGroup` (`scs-binge`). With Stremio's *Play next
+  episode* setting on, the top stream of each next episode is auto-selected — one
+  stream click on the first episode, then non-stop playback with no source-selection
+  screen. The per-episode catalog still uses raw imdb ids and external addons.
+
 - **Binge / autoplay series.** A second catalog, *Sitcom Shuffle (Binge / Autoplay)*,
   exposes the whole shuffle as a single `series` (`scs:binge`) with every episode as a
   sequential video (`S01E01..N`). Stremio plays them in order and autoplays the next

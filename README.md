@@ -27,8 +27,11 @@ The addon ships **two catalogs**:
   every shuffled episode as a sequential `S01E01..N` video. Open it once and Stremio
   plays through them with **autoplay** ("next episode" after each). The binge order is
   re-shuffled each time you open the binge catalog, so a fresh mix is a re-open away.
-  Each video keeps its real `imdb:season:episode` id, so stream addons (Torrentio,
-  etc.) resolve playback the same as for the per-episode catalog.
+  Binge videos use a `scs:`-prefixed id, so their streams come from this addon's own
+  aggregator: it queries the upstream addons listed in `UPSTREAM_ADDONS` (priority
+  order) and tags every stream with one `bingeGroup`, so with Stremio's *Play next
+  episode* setting on, playback continues hands-free — the top stream of each next
+  episode is auto-selected, no source-selection screen between episodes.
 
 ### Fair shuffle algorithm
 
@@ -69,6 +72,7 @@ the project dir first, then `~/.env`, so config survives redeploys):
 | `TMDB_API_KEY`         | no       | TMDB key for poster/background images                    |
 | `CRON_SCHEDULE`        | no       | Cron expression for the data refresh (default `0 */6 * * *`) |
 | `PORT`                 | no       | HTTP port (default `3020`)                               |
+| `UPSTREAM_ADDONS`      | no       | Comma-separated stream addon base URLs, priority order (default `https://torrentio.strem.fun`) |
 
 Tokens are persisted to `~/data/tokens.json` and refreshed automatically on 401/403.
 
@@ -96,7 +100,7 @@ http://<your-host>:<port>/manifest.json
 | `/manifest.json`      | Stremio addon manifest                                         |
 | `/catalog/...`        | Shuffled episode catalog (re-shuffles on each fresh open)      |
 | `/meta/...`           | Episode metadata                                               |
-| `/stream/...`         | Stream handler (returns no streams — discovery only)           |
+| `/stream/...`         | Streams for binge episodes (aggregated from `UPSTREAM_ADDONS`); empty otherwise |
 | `/`                   | Health check (used by TV clients)                              |
 | `/reshuffle`          | Manually trigger a full Trakt fetch + shuffle (returns count)  |
 

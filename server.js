@@ -398,8 +398,10 @@ addon.defineMetaHandler(({ type, id }) => {
     if (id === 'scs:binge') {
         if (bingeCache.length === 0) buildBingeOrder(); // cold start / direct open
         const poster = bingeCache.find(ep => ep.showPoster)?.showPoster;
+        // 'scs:' prefix routes stream requests to OUR handler (which aggregates
+        // upstream addons), instead of letting Stremio show every addon's list.
         const videos = bingeCache.map((ep, i) => ({
-            id: `${ep.showIds.imdb}:${ep.season}:${ep.episode}`,
+            id: `scs:${ep.showIds.imdb}:${ep.season}:${ep.episode}`,
             title: `${ep.showTitle} - S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')}${ep.title ? ` - ${ep.title}` : ''}`,
             season: 1,
             episode: i + 1,
@@ -447,8 +449,40 @@ addon.defineMetaHandler(({ type, id }) => {
     });
 });
 
-addon.defineStreamHandler(({ type, id }) => {
-    return Promise.resolve({ streams: [] });
+// Upstream stream addons in priority order: comma-separated base URLs
+// (the installed manifest URL, with or without the trailing /manifest.json).
+const UPSTREAM_ADDONS = (process.env.UPSTREAM_ADDONS || 'https://torrentio.strem.fun')
+    .split(',')
+    .map(u => u.trim().replace(/\/manifest\.json$/, '').replace(/\/+$/, ''))
+    .filter(Boolean);
+
+// Binge episodes (scs:tt...:s:e): fetch streams from all upstream addons,
+// return them in priority order, all tagged with one constant bingeGroup so
+// Stremio's autoplay picks the top stream of the next episode automatically —
+// no source-selection screen between episodes.
+addon.defineStreamHandler(async ({ type, id }) => {
+    if (!id.startsWith('scs:tt')) return { streams: [] };
+    const epId = id.substring(4); // tt...:season:episode
+
+    const results = await Promise.all(UPSTREAM_ADDONS.map(async base => {
+        try {
+            const res = await fetch(`${base}/stream/series/${epId}.json`, {
+                signal: AbortSignal.timeout(15000)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return (await res.json()).streams || [];
+        } catch (e) {
+            console.error(`Upstream ${base} failed for ${epId}: ${e.message}`);
+            return [];
+        }
+    }));
+
+    const streams = results.flat().map(s => ({
+        ...s,
+        behaviorHints: { ...s.behaviorHints, bingeGroup: 'scs-binge' }
+    }));
+    console.log(`Streams for ${epId}: ${streams.length} from ${UPSTREAM_ADDONS.length} upstream(s)`);
+    return { streams };
 });
 
 // ======================== EXPRESS SERVER ========================
