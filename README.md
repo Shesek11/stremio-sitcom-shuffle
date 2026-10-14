@@ -10,7 +10,8 @@ it so you keep discovering different episodes instead of seeing the same few.
 
 1. **Data fetch (slow, scheduled).** A cron job (`fetchAndShuffle`) reads the shows
    from your Trakt list, pulls every episode via the Trakt API, enriches them with
-   poster/background art and per-episode stills/overview/runtime/rating from TMDB, and stores the result in `~/data/episodes.json`.
+   poster/background art and per-episode stills/overview/runtime/rating from TMDB (Hebrew names/overviews
+   fill gaps for Israeli shows), and stores the result in `~/data/episodes.json`.
    Runs every 6 hours by default.
 2. **Shuffle (fast, on demand).** The shuffle is **decoupled** from the fetch. Every
    time the catalog is opened (`skip=0`), the stored episodes are re-shuffled fresh,

@@ -123,7 +123,9 @@ async function getTmdbImages(tmdbId) {
         const data = await response.json();
         return {
             poster: data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : null,
-            fanart: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : null
+            fanart: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : null,
+            // Israeli shows: show the Hebrew title instead of Trakt's transliteration.
+            hebrewTitle: data.original_language === 'he' ? data.original_name : null
         };
     } catch (e) {
         console.error(`TMDB fetch failed for ${tmdbId}:`, e.message.replace(/api_key=[^&\s]+/g, 'api_key=REDACTED'));
@@ -133,10 +135,10 @@ async function getTmdbImages(tmdbId) {
 
 // Episode stills (and fallbacks for fields Trakt left empty) for one season,
 // keyed by episode number.
-async function getTmdbSeason(tmdbId, season) {
+async function getTmdbSeason(tmdbId, season, language = 'en-US') {
     if (!tmdbId || !CONFIG.TMDB_API_KEY) return {};
     try {
-        const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${season}?api_key=${CONFIG.TMDB_API_KEY}`;
+        const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${season}?api_key=${CONFIG.TMDB_API_KEY}&language=${language}`;
         const response = await fetch(url);
         if (!response.ok) return {};
         const data = await response.json();
@@ -147,18 +149,34 @@ async function getTmdbSeason(tmdbId, season) {
     }
 }
 
+// Placeholder names ("Episode 5" / "פרק 5") that a real title should replace.
+const GENERIC_TITLE = /^(Episode|פרק)\s*\d+$/i;
+
 async function enrichWithTmdb(episodes, tmdbId) {
     const seasons = [...new Set(episodes.map(ep => ep.season))];
     for (const season of seasons) {
+        const seasonEps = episodes.filter(e => e.season === season);
         const tmdbEps = await getTmdbSeason(tmdbId, season);
-        for (const ep of episodes.filter(e => e.season === season)) {
+        for (const ep of seasonEps) {
             const t = tmdbEps[ep.episode];
             if (!t) continue;
             if (t.still_path) ep.still = `https://image.tmdb.org/t/p/w500${t.still_path}`;
+            if (GENERIC_TITLE.test(ep.title) && t.name && !GENERIC_TITLE.test(t.name)) ep.title = t.name;
             ep.overview = ep.overview || t.overview || '';
             ep.firstAired = ep.firstAired || t.air_date || null;
             ep.runtime = ep.runtime || t.runtime || null;
             ep.rating = ep.rating || t.vote_average || null;
+        }
+
+        // Hebrew only fills gaps (Israeli shows mostly have no English text), so
+        // English shows keep English. Fetched only for seasons that need it.
+        if (!seasonEps.some(ep => !ep.overview || GENERIC_TITLE.test(ep.title))) continue;
+        const heEps = await getTmdbSeason(tmdbId, season, 'he-IL');
+        for (const ep of seasonEps) {
+            const t = heEps[ep.episode];
+            if (!t) continue;
+            if (GENERIC_TITLE.test(ep.title) && t.name && !GENERIC_TITLE.test(t.name)) ep.title = t.name;
+            ep.overview = ep.overview || t.overview || '';
         }
     }
 }
@@ -249,7 +267,7 @@ async function fetchAndShuffle() {
             await enrichWithTmdb(episodes, show.ids?.tmdb);
             const images = imageCache[show.ids.slug] || { poster: null, fanart: null };
             episodes.forEach(ep => {
-                ep.showTitle = show.title;
+                ep.showTitle = images.hebrewTitle || show.title;
                 ep.showYear = show.year;
                 ep.showIds = show.ids;
                 ep.showPoster = images.poster;

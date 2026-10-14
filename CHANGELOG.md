@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Hebrew fallback for Israeli shows.** Where Trakt/TMDB have no English text, episode
+  names and overviews come from TMDB in Hebrew (`he-IL`); placeholder names like
+  "Episode 5" are replaced by the real title. Shows whose TMDB original language is
+  Hebrew are listed under their Hebrew name. English shows are unchanged.
 - **Rich episode details (Nuvio / Stremio episode cards).** Episodes now carry a
   thumbnail (TMDB episode still), overview, real air date, runtime and rating, on the
   binge series, the per-episode meta and the catalog tiles (background, description,
