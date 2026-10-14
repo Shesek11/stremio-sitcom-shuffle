@@ -73,7 +73,7 @@ const POSTER_OVERRIDES = {
 };
 
 async function getShowsFromList() {
-    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
+    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME.toLowerCase()}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
     const items = await traktFetchPaginated(url);
     return items.map(item => {
         const show = item.show;
