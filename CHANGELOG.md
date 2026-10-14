@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Rich episode details (Nuvio / Stremio episode cards).** Episodes now carry a
+  thumbnail (TMDB episode still), overview, real air date, runtime and rating, on the
+  binge series, the per-episode meta and the catalog tiles (background, description,
+  rating). Trakt is queried with `extended=full,episodes` (overviews were always
+  empty before) and each season is enriched from TMDB. `runtime`/`rating` are sent
+  as strings because Nuvio parses them that way.
+
 - **Hands-free binge: built-in stream aggregation.** Binge episodes now use a
   `scs:`-prefixed video id, so their stream requests route to this addon instead of
   showing every installed addon's list. The addon fetches streams from upstream
@@ -30,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A data fetch that returns 0 episodes (Trakt outage / API change) no longer
+  overwrites the stored catalog with an empty one.
 - **Haverot (חברות) never appeared in the catalog.** Trakt and TMDB have no IMDB id
   for the show even though IMDB lists it (`tt3046098`), and the catalog filters out
   episodes without an IMDB id. Added a local `IMDB_OVERRIDES` map that fills in

@@ -173,7 +173,8 @@ async function getShowsFromList() {
 }
 
 async function getShowEpisodes(showSlug) {
-    const url = `https://api.trakt.tv/shows/${showSlug}/seasons?extended=episodes`;
+    // 'full' adds per-episode overview, air date, runtime and rating.
+    const url = `https://api.trakt.tv/shows/${showSlug}/seasons?extended=full,episodes`;
     try {
         const seasons = await traktFetch(url);
         const episodes = [];
@@ -185,6 +186,9 @@ async function getShowEpisodes(showSlug) {
                     episode: ep.number,
                     title: ep.title || `Episode ${ep.number}`,
                     overview: ep.overview || '',
+                    firstAired: ep.first_aired || null,
+                    runtime: ep.runtime || null,
+                    rating: ep.rating || null,
                     ids: ep.ids || {}
                 });
             }
@@ -213,6 +217,50 @@ async function getTmdbImages(tmdbId) {
         console.error(`TMDB fetch failed for ${tmdbId}:`, e.message);
         return { poster: null, fanart: null };
     }
+}
+
+// Episode stills (and fallbacks for fields Trakt left empty) for one season,
+// keyed by episode number.
+async function getTmdbSeason(tmdbId, season) {
+    if (!tmdbId || !CONFIG.TMDB_API_KEY) return {};
+    try {
+        const url = `https://api.themoviedb.org/3/tv/${tmdbId}/season/${season}?api_key=${CONFIG.TMDB_API_KEY}`;
+        const response = await fetch(url);
+        if (!response.ok) return {};
+        const data = await response.json();
+        return Object.fromEntries((data.episodes || []).map(ep => [ep.episode_number, ep]));
+    } catch (e) {
+        console.error(`TMDB season fetch failed for ${tmdbId} S${season}:`, e.message);
+        return {};
+    }
+}
+
+async function enrichWithTmdb(episodes, tmdbId) {
+    const seasons = [...new Set(episodes.map(ep => ep.season))];
+    for (const season of seasons) {
+        const tmdbEps = await getTmdbSeason(tmdbId, season);
+        for (const ep of episodes.filter(e => e.season === season)) {
+            const t = tmdbEps[ep.episode];
+            if (!t) continue;
+            if (t.still_path) ep.still = `https://image.tmdb.org/t/p/w500${t.still_path}`;
+            ep.overview = ep.overview || t.overview || '';
+            ep.firstAired = ep.firstAired || t.air_date || null;
+            ep.runtime = ep.runtime || t.runtime || null;
+            ep.rating = ep.rating || t.vote_average || null;
+        }
+    }
+}
+
+// Per-episode fields Nuvio/Stremio show on the episode card. Nuvio parses
+// runtime and rating as strings, so they must not be sent as numbers.
+function videoDetails(ep) {
+    return {
+        thumbnail: ep.still || ep.showFanart || undefined,
+        overview: ep.overview || undefined,
+        released: ep.firstAired || new Date().toISOString(),
+        runtime: ep.runtime ? `${ep.runtime} min` : undefined,
+        rating: ep.rating ? Number(ep.rating).toFixed(1) : undefined
+    };
 }
 
 // ======================== SHUFFLE ========================
@@ -286,6 +334,7 @@ async function fetchAndShuffle() {
         const batch = shows.slice(i, i + 5);
         const results = await Promise.all(batch.map(async (show) => {
             const episodes = await getShowEpisodes(show.ids.slug);
+            await enrichWithTmdb(episodes, show.ids?.tmdb);
             const images = imageCache[show.ids.slug] || { poster: null, fanart: null };
             episodes.forEach(ep => {
                 ep.showTitle = show.title;
@@ -298,6 +347,9 @@ async function fetchAndShuffle() {
         }));
         results.forEach(eps => allEpisodes.push(...eps));
     }
+
+    // Keep the last good data if Trakt returned nothing (outage / API change).
+    if (allEpisodes.length === 0) throw new Error('Fetched 0 episodes, keeping existing data.');
 
     const shuffled = fairShuffle(allEpisodes);
     fs.writeFileSync(EPISODES_FILE, JSON.stringify(shuffled));
@@ -384,7 +436,11 @@ addon.defineCatalogHandler(({ type, id, extra }) => {
             id: `scs:${ep.showIds.imdb}:${ep.season}:${ep.episode}`,
             type: 'series',
             name: `${ep.showTitle} - S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')}`,
-            poster: ep.showPoster || undefined
+            poster: ep.showPoster || undefined,
+            background: ep.showFanart || ep.still || undefined,
+            description: `"${ep.title}"${ep.overview ? `\n\n${ep.overview}` : ''}`,
+            releaseInfo: String(ep.showYear || ''),
+            imdbRating: ep.rating ? Number(ep.rating).toFixed(1) : undefined
         }));
     return Promise.resolve({ metas });
 });
@@ -405,8 +461,7 @@ addon.defineMetaHandler(({ type, id }) => {
             title: `${ep.showTitle} - S${String(ep.season).padStart(2, '0')}E${String(ep.episode).padStart(2, '0')}${ep.title ? ` - ${ep.title}` : ''}`,
             season: 1,
             episode: i + 1,
-            released: new Date().toISOString(),
-            overview: ep.overview || ''
+            ...videoDetails(ep)
         }));
         return Promise.resolve({ meta: {
             id: 'scs:binge',
@@ -442,8 +497,7 @@ addon.defineMetaHandler(({ type, id }) => {
                 title: ep.title || `Episode ${episodeNum}`,
                 season: Number(season),
                 episode: Number(episodeNum),
-                released: new Date().toISOString(),
-                overview: ep.overview || ''
+                ...videoDetails(ep)
             }]
         }
     });

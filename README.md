@@ -10,7 +10,7 @@ it so you keep discovering different episodes instead of seeing the same few.
 
 1. **Data fetch (slow, scheduled).** A cron job (`fetchAndShuffle`) reads the shows
    from your Trakt list, pulls every episode via the Trakt API, enriches them with
-   poster/background art from TMDB, and stores the result in `~/data/episodes.json`.
+   poster/background art and per-episode stills/overview/runtime/rating from TMDB, and stores the result in `~/data/episodes.json`.
    Runs every 6 hours by default.
 2. **Shuffle (fast, on demand).** The shuffle is **decoupled** from the fetch. Every
    time the catalog is opened (`skip=0`), the stored episodes are re-shuffled fresh,
@@ -69,7 +69,7 @@ the project dir first, then `~/.env`, so config survives redeploys):
 | `TRAKT_CLIENT_SECRET`  | yes      | Trakt API app client secret                              |
 | `TRAKT_ACCESS_TOKEN`   | yes      | OAuth access token (auto-refreshed and cached on disk)   |
 | `TRAKT_REFRESH_TOKEN`  | yes      | OAuth refresh token                                      |
-| `TMDB_API_KEY`         | no       | TMDB key for poster/background images                    |
+| `TMDB_API_KEY`         | no       | TMDB key for poster/background art and episode stills    |
 | `CRON_SCHEDULE`        | no       | Cron expression for the data refresh (default `0 */6 * * *`) |
 | `PORT`                 | no       | HTTP port (default `3020`)                               |
 | `UPSTREAM_ADDONS`      | no       | Comma-separated stream addon base URLs, priority order (default `https://torrentio.strem.fun`) |
