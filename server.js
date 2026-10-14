@@ -450,6 +450,8 @@ const SUBTITLE_ADDONS = addonList(process.env.SUBTITLE_ADDONS || [
 // Fetch one resource (stream/subtitles) for a real imdb episode id from every
 // upstream addon in parallel; results stay in priority order, failures are skipped.
 async function fetchUpstream(bases, resource, epId, extra) {
+    // The id comes from the request; only a real episode id may reach the upstream URL.
+    if (!/^tt\d+:\d+:\d+$/.test(epId)) return [];
     const extraPath = extra && Object.keys(extra).length ? `/${new URLSearchParams(extra)}` : '';
     const results = await Promise.all(bases.map(async base => {
         try {
