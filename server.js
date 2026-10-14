@@ -214,7 +214,7 @@ async function getTmdbImages(tmdbId) {
             fanart: data.backdrop_path ? `https://image.tmdb.org/t/p/original${data.backdrop_path}` : null
         };
     } catch (e) {
-        console.error(`TMDB fetch failed for ${tmdbId}:`, e.message);
+        console.error(`TMDB fetch failed for ${tmdbId}:`, e.message.replace(/api_key=[^&\s]+/g, 'api_key=REDACTED'));
         return { poster: null, fanart: null };
     }
 }
@@ -230,7 +230,7 @@ async function getTmdbSeason(tmdbId, season) {
         const data = await response.json();
         return Object.fromEntries((data.episodes || []).map(ep => [ep.episode_number, ep]));
     } catch (e) {
-        console.error(`TMDB season fetch failed for ${tmdbId} S${season}:`, e.message);
+        console.error(`TMDB season fetch failed for ${tmdbId} S${season}:`, e.message.replace(/api_key=[^&\s]+/g, 'api_key=REDACTED'));
         return {};
     }
 }
