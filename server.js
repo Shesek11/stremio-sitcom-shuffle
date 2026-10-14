@@ -476,7 +476,10 @@ addon.defineStreamHandler(async ({ type, id }) => {
     if (!id.startsWith('scs:tt')) return { streams: [] };
     const epId = id.substring(4); // tt...:season:episode
 
-    const streams = (await fetchUpstream(UPSTREAM_ADDONS, 'stream', epId)).map(s => ({
+    // Drop entries that can't play (AIOStreams error/info rows have no url):
+    // autoplay picks the first stream, so a message row would stall the binge.
+    const streams = (await fetchUpstream(UPSTREAM_ADDONS, 'stream', epId))
+        .filter(s => s.url || s.infoHash || s.ytId).map(s => ({
         ...s,
         behaviorHints: { ...s.behaviorHints, bingeGroup: 'scs-binge' }
     }));

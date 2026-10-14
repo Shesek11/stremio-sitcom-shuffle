@@ -55,6 +55,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Binge streams drop non-playable upstream entries (no `url`/`infoHash`/`ytId`), e.g.
+  AIOStreams error rows, so autoplay never picks a message row as the first stream.
 - A data fetch that returns 0 episodes (Trakt outage / API change) no longer
   overwrites the stored catalog with an empty one.
 - **Haverot (חברות) never appeared in the catalog.** Trakt and TMDB have no IMDB id
