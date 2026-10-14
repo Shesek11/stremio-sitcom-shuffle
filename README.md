@@ -69,6 +69,7 @@ the project dir first, then `~/.env`, so config survives redeploys):
 | `TRAKT_CLIENT_SECRET`  | yes      | Trakt API app client secret                              |
 | `TRAKT_ACCESS_TOKEN`   | yes      | OAuth access token (auto-refreshed and cached on disk)   |
 | `TRAKT_REFRESH_TOKEN`  | yes      | OAuth refresh token                                      |
+| `TRAKT_REDIRECT_URI`   | no       | Redirect URI registered on the Trakt app (default `https://stremio-sitcom-shuffle.wp1.host/callback`) |
 | `TMDB_API_KEY`         | no       | TMDB key for poster/background art and episode stills    |
 | `CRON_SCHEDULE`        | no       | Cron expression for the data refresh (default `0 */6 * * *`) |
 | `PORT`                 | no       | HTTP port (default `3020`)                               |

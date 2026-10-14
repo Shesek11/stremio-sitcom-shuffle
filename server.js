@@ -71,7 +71,8 @@ async function refreshTraktToken() {
             refresh_token: refreshToken,
             client_id: CONFIG.TRAKT_CLIENT_ID,
             client_secret: CONFIG.TRAKT_CLIENT_SECRET,
-            redirect_uri: 'urn:ietf:wg:oauth:2.0:oob',
+            // Must match a Redirect URI registered on the Trakt app (https only).
+            redirect_uri: process.env.TRAKT_REDIRECT_URI || 'https://stremio-sitcom-shuffle.wp1.host/callback',
             grant_type: 'refresh_token'
         })
     });

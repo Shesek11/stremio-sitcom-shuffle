@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Trakt token refresh now sends an https redirect URI (`TRAKT_REDIRECT_URI`), since
+  apps on the new Trakt developer portal no longer accept the `urn:ietf:wg:oauth:2.0:oob` URI.
 - A data fetch that returns 0 episodes (Trakt outage / API change) no longer
   overwrites the stored catalog with an empty one.
 - **Haverot (חברות) never appeared in the catalog.** Trakt and TMDB have no IMDB id
