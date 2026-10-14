@@ -444,7 +444,8 @@ const UPSTREAM_ADDONS = addonList(process.env.UPSTREAM_ADDONS || 'https://torren
 const SUBTITLE_ADDONS = addonList(process.env.SUBTITLE_ADDONS || [
     'https://opensubtitles-v3.strem.io',
     'https://4b139a4b7f94-wizdom-stremio-v2.baby-beamup.club',
-    'https://4b139a4b7f94-ktuvit-stremio.baby-beamup.club'
+    'https://4b139a4b7f94-ktuvit-stremio.baby-beamup.club',
+    'https://ktuvit-latest-nuvio.vercel.app' // K&W-Hub: Hebrew subs ranked by file match
 ].join(','));
 
 // Fetch one resource (stream/subtitles) for a real imdb episode id from every

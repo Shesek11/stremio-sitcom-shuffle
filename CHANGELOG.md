@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Default `SUBTITLE_ADDONS` now also includes K&W-Hub (ktuvit-latest-nuvio), which
+  returns Hebrew subtitles from Ktuvit and Wizdom ranked by match to the playing file.
 - **Trakt OAuth removed.** Trakt deleted legacy API apps in 2026 and new apps get no
   client secret, so the old access/refresh-token flow died (`session not found`). The
   list is now read as a **public** list with the Client ID only

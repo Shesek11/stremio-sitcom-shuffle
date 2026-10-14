@@ -71,7 +71,7 @@ the project dir first, then `~/.env`, so config survives redeploys):
 | `CRON_SCHEDULE`        | no       | Cron expression for the data refresh (default `0 */6 * * *`) |
 | `PORT`                 | no       | HTTP port (default `3020`)                               |
 | `UPSTREAM_ADDONS`      | no       | Comma-separated stream addon base URLs, priority order (default `https://torrentio.strem.fun`; production uses Hebrew Sources + the self-hosted AIOStreams/TorBox manifest) |
-| `SUBTITLE_ADDONS`      | no       | Comma-separated subtitle addon base URLs (default OpenSubtitles v3, Wizdom, Ktuvit) |
+| `SUBTITLE_ADDONS`      | no       | Comma-separated subtitle addon base URLs (default OpenSubtitles v3, Wizdom, Ktuvit, K&W-Hub) |
 
 
 ### Run
