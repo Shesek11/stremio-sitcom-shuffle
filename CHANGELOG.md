@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Trakt OAuth removed.** Trakt deleted legacy API apps in 2026 and new apps get no
+  client secret, so the old access/refresh-token flow died (`session not found`). The
+  list is now read as a **public** list with the Client ID only
+  (`/users/<TRAKT_USERNAME>/lists/<slug>`). `TRAKT_CLIENT_SECRET`,
+  `TRAKT_ACCESS_TOKEN`, `TRAKT_REFRESH_TOKEN` and `~/data/tokens.json` are no longer used.
+
 ### Added
 
 - **Rich episode details (Nuvio / Stremio episode cards).** Episodes now carry a
@@ -37,8 +45,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Trakt token refresh now sends an https redirect URI (`TRAKT_REDIRECT_URI`), since
-  apps on the new Trakt developer portal no longer accept the `urn:ietf:wg:oauth:2.0:oob` URI.
 - A data fetch that returns 0 episodes (Trakt outage / API change) no longer
   overwrites the stored catalog with an empty one.
 - **Haverot (חברות) never appeared in the catalog.** Trakt and TMDB have no IMDB id

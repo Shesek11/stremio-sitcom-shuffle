@@ -13,7 +13,6 @@ const PORT = process.env.PORT || 3020;
 // Store data in home dir so it persists across xCloud deploys
 const DATA_DIR = path.join(require('os').homedir(), 'data');
 const EPISODES_FILE = path.join(DATA_DIR, 'episodes.json');
-const TOKENS_FILE = path.join(DATA_DIR, 'tokens.json');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 
@@ -23,130 +22,42 @@ const CONFIG = {
     TRAKT_USERNAME: process.env.TRAKT_USERNAME,
     TRAKT_LIST_SLUG: process.env.TRAKT_LIST_SLUG,
     TRAKT_CLIENT_ID: process.env.TRAKT_CLIENT_ID,
-    TRAKT_CLIENT_SECRET: process.env.TRAKT_CLIENT_SECRET,
-    TRAKT_ACCESS_TOKEN: process.env.TRAKT_ACCESS_TOKEN,
-    TRAKT_REFRESH_TOKEN: process.env.TRAKT_REFRESH_TOKEN,
     TMDB_API_KEY: process.env.TMDB_API_KEY,
     CRON_SCHEDULE: process.env.CRON_SCHEDULE || '0 */6 * * *' // every 6 hours
 };
 
-// ======================== LOCAL TOKEN STORAGE ========================
-
-function loadTokens() {
-    try {
-        if (fs.existsSync(TOKENS_FILE)) {
-            return JSON.parse(fs.readFileSync(TOKENS_FILE, 'utf8'));
-        }
-    } catch (e) {
-        console.error('Failed to load tokens file:', e.message);
-    }
-    return {};
-}
-
-function saveTokens(tokens) {
-    fs.writeFileSync(TOKENS_FILE, JSON.stringify(tokens, null, 2));
-}
-
-function getAccessToken() {
-    const tokens = loadTokens();
-    return tokens.access_token || CONFIG.TRAKT_ACCESS_TOKEN;
-}
-
-function getRefreshToken() {
-    const tokens = loadTokens();
-    return tokens.refresh_token || CONFIG.TRAKT_REFRESH_TOKEN;
-}
-
 // ======================== TRAKT API ========================
 
-async function refreshTraktToken() {
-    console.log('Refreshing Trakt token...');
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) throw new Error('No refresh token available.');
+// No OAuth: the list is public, so the Client ID alone reads it. (Trakt removed
+// legacy apps in 2026 and new apps get no client secret, which killed token refresh.)
+const TRAKT_HEADERS = {
+    'Content-Type': 'application/json',
+    'User-Agent': 'SitcomShuffle/24.0 (+https://github.com/Shesek11/stremio-sitcom-shuffle)',
+    'trakt-api-version': '2',
+    'trakt-api-key': CONFIG.TRAKT_CLIENT_ID
+};
 
-    const response = await fetch('https://api.trakt.tv/oauth/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'User-Agent': 'SitcomShuffle/24.0 (+https://github.com/Shesek11/stremio-sitcom-shuffle)' },
-        body: JSON.stringify({
-            refresh_token: refreshToken,
-            client_id: CONFIG.TRAKT_CLIENT_ID,
-            client_secret: CONFIG.TRAKT_CLIENT_SECRET,
-            // Must match a Redirect URI registered on the Trakt app (https only).
-            redirect_uri: process.env.TRAKT_REDIRECT_URI || 'https://stremio-sitcom-shuffle.wp1.host/callback',
-            grant_type: 'refresh_token'
-        })
-    });
-
-    if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Token refresh failed: ${response.status} ${errText}`);
-    }
-
-    const data = await response.json();
-    saveTokens({ access_token: data.access_token, refresh_token: data.refresh_token });
-    console.log('Token refreshed and saved.');
-    return data.access_token;
-}
-
-function getTraktHeaders(token) {
-    return {
-        'Content-Type': 'application/json',
-        'User-Agent': 'SitcomShuffle/24.0 (+https://github.com/Shesek11/stremio-sitcom-shuffle)',
-        'trakt-api-version': '2',
-        'trakt-api-key': CONFIG.TRAKT_CLIENT_ID,
-        'Authorization': `Bearer ${token}`
-    };
+async function traktGet(url) {
+    const response = await fetch(url, { headers: TRAKT_HEADERS });
+    if (!response.ok) throw new Error(`Trakt API error: ${response.status} ${response.statusText}`);
+    return response;
 }
 
 async function traktFetch(url) {
-    let token = getAccessToken();
-    if (!token) token = await refreshTraktToken();
-
-    let response = await fetch(url, { headers: getTraktHeaders(token) });
-
-    if (response.status === 401 || response.status === 403) {
-        console.log(`Trakt ${response.status}, refreshing token...`);
-        token = await refreshTraktToken();
-        response = await fetch(url, { headers: getTraktHeaders(token) });
-    }
-
-    if (!response.ok) throw new Error(`Trakt API error: ${response.status} ${response.statusText}`);
-    return response.json();
+    return (await traktGet(url)).json();
 }
 
 async function traktFetchPaginated(url) {
     const allItems = [];
-    let page = 1;
-    const limit = 100;
-
-    while (true) {
-        const separator = url.includes('?') ? '&' : '?';
-        const pagedUrl = `${url}${separator}page=${page}&limit=${limit}`;
-
-        let token = getAccessToken();
-        if (!token) token = await refreshTraktToken();
-
-        let response = await fetch(pagedUrl, { headers: getTraktHeaders(token) });
-
-        if (response.status === 401 || response.status === 403) {
-            console.log(`Trakt ${response.status}, refreshing token...`);
-            token = await refreshTraktToken();
-            response = await fetch(pagedUrl, { headers: getTraktHeaders(token) });
-        }
-
-        if (!response.ok) throw new Error(`Trakt API error: ${response.status} ${response.statusText}`);
-
+    const separator = url.includes('?') ? '&' : '?';
+    for (let page = 1; ; page++) {
+        const response = await traktGet(`${url}${separator}page=${page}&limit=100`);
         const items = await response.json();
         allItems.push(...items);
-
         const totalPages = parseInt(response.headers.get('x-pagination-page-count') || '1');
         console.log(`Trakt pagination: page ${page}/${totalPages}, got ${items.length} items`);
-
-        if (page >= totalPages || items.length === 0) break;
-        page++;
+        if (page >= totalPages || items.length === 0) return allItems;
     }
-
-    return allItems;
 }
 
 // Trakt/TMDB are missing IMDB ids for some Israeli shows even when IMDB has
@@ -162,7 +73,7 @@ const POSTER_OVERRIDES = {
 };
 
 async function getShowsFromList() {
-    const url = `https://api.trakt.tv/users/me/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
+    const url = `https://api.trakt.tv/users/${CONFIG.TRAKT_USERNAME}/lists/${CONFIG.TRAKT_LIST_SLUG}/items/shows`;
     const items = await traktFetchPaginated(url);
     return items.map(item => {
         const show = item.show;

@@ -46,8 +46,8 @@ every show rather than being stuck on the same first few.
 ### Requirements
 
 - Node.js >= 18
-- A Trakt account + API app (client id/secret) — https://trakt.tv/oauth/applications
-- A Trakt list of shows
+- A Trakt API app (only its Client ID is used) — https://developer.trakt.tv/apps
+- A **public** Trakt list of shows (no OAuth: the Client ID alone reads public lists)
 - (Optional) A TMDB API key for poster/background art — https://www.themoviedb.org/settings/api
 
 ### Install
@@ -65,17 +65,12 @@ the project dir first, then `~/.env`, so config survives redeploys):
 |------------------------|----------|----------------------------------------------------------|
 | `TRAKT_USERNAME`       | yes      | Your Trakt username                                       |
 | `TRAKT_LIST_SLUG`      | yes      | Slug of the Trakt list of shows to pull from             |
-| `TRAKT_CLIENT_ID`      | yes      | Trakt API app client id                                  |
-| `TRAKT_CLIENT_SECRET`  | yes      | Trakt API app client secret                              |
-| `TRAKT_ACCESS_TOKEN`   | yes      | OAuth access token (auto-refreshed and cached on disk)   |
-| `TRAKT_REFRESH_TOKEN`  | yes      | OAuth refresh token                                      |
-| `TRAKT_REDIRECT_URI`   | no       | Redirect URI registered on the Trakt app (default `https://stremio-sitcom-shuffle.wp1.host/callback`) |
+| `TRAKT_CLIENT_ID`      | yes      | Trakt API app Client ID                                  |
 | `TMDB_API_KEY`         | no       | TMDB key for poster/background art and episode stills    |
 | `CRON_SCHEDULE`        | no       | Cron expression for the data refresh (default `0 */6 * * *`) |
 | `PORT`                 | no       | HTTP port (default `3020`)                               |
 | `UPSTREAM_ADDONS`      | no       | Comma-separated stream addon base URLs, priority order (default `https://torrentio.strem.fun`) |
 
-Tokens are persisted to `~/data/tokens.json` and refreshed automatically on 401/403.
 
 ### Run
 
@@ -122,7 +117,7 @@ Pushing to the `main` branch triggers auto-deploy.
 |------------------|------------------------------------------------------------------|
 | `server.js`      | **Active app** — Express + stremio-addon-sdk, fetch, shuffle, serve |
 | `api/`           | Legacy Vercel serverless implementation (not used on xCloud)     |
-| `~/data/`        | Runtime data (`episodes.json`, `tokens.json`) — outside the repo  |
+| `~/data/`        | Runtime data (`episodes.json`) — outside the repo  |
 
 ## License
 
