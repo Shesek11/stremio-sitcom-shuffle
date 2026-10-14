@@ -305,7 +305,7 @@ const CATALOG_PAGE_SIZE = 100;
 
 const addon = new addonBuilder({
     id: 'community.sitcom.shuffle',
-    version: '25.0.0',
+    version: '25.1.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{
@@ -318,7 +318,7 @@ const addon = new addonBuilder({
         id: 'shuffle-binge',
         name: 'Sitcom Shuffle (Binge / Autoplay)'
     }],
-    resources: ['catalog', 'meta', 'stream'],
+    resources: ['catalog', 'meta', 'stream', 'subtitles'],
     types: ['series'],
     idPrefixes: ['scs']
 });
@@ -433,12 +433,38 @@ addon.defineMetaHandler(({ type, id }) => {
     });
 });
 
-// Upstream stream addons in priority order: comma-separated base URLs
-// (the installed manifest URL, with or without the trailing /manifest.json).
-const UPSTREAM_ADDONS = (process.env.UPSTREAM_ADDONS || 'https://torrentio.strem.fun')
-    .split(',')
-    .map(u => u.trim().replace(/\/manifest\.json$/, '').replace(/\/+$/, ''))
-    .filter(Boolean);
+// Upstream addons in priority order: comma-separated base URLs (the installed
+// manifest URL, with or without the trailing /manifest.json).
+function addonList(value) {
+    return value.split(',')
+        .map(u => u.trim().replace(/\/manifest\.json$/, '').replace(/\/+$/, ''))
+        .filter(Boolean);
+}
+const UPSTREAM_ADDONS = addonList(process.env.UPSTREAM_ADDONS || 'https://torrentio.strem.fun');
+const SUBTITLE_ADDONS = addonList(process.env.SUBTITLE_ADDONS || [
+    'https://opensubtitles-v3.strem.io',
+    'https://4b139a4b7f94-wizdom-stremio-v2.baby-beamup.club',
+    'https://4b139a4b7f94-ktuvit-stremio.baby-beamup.club'
+].join(','));
+
+// Fetch one resource (stream/subtitles) for a real imdb episode id from every
+// upstream addon in parallel; results stay in priority order, failures are skipped.
+async function fetchUpstream(bases, resource, epId, extra) {
+    const extraPath = extra && Object.keys(extra).length ? `/${new URLSearchParams(extra)}` : '';
+    const results = await Promise.all(bases.map(async base => {
+        try {
+            const res = await fetch(`${base}/${resource}/series/${epId}${extraPath}.json`, {
+                signal: AbortSignal.timeout(15000)
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return (await res.json())[resource === 'stream' ? 'streams' : 'subtitles'] || [];
+        } catch (e) {
+            console.error(`Upstream ${base} ${resource} failed for ${epId}: ${e.message}`);
+            return [];
+        }
+    }));
+    return results.flat();
+}
 
 // Binge episodes (scs:tt...:s:e): fetch streams from all upstream addons,
 // return them in priority order, all tagged with one constant bingeGroup so
@@ -448,25 +474,24 @@ addon.defineStreamHandler(async ({ type, id }) => {
     if (!id.startsWith('scs:tt')) return { streams: [] };
     const epId = id.substring(4); // tt...:season:episode
 
-    const results = await Promise.all(UPSTREAM_ADDONS.map(async base => {
-        try {
-            const res = await fetch(`${base}/stream/series/${epId}.json`, {
-                signal: AbortSignal.timeout(15000)
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            return (await res.json()).streams || [];
-        } catch (e) {
-            console.error(`Upstream ${base} failed for ${epId}: ${e.message}`);
-            return [];
-        }
-    }));
-
-    const streams = results.flat().map(s => ({
+    const streams = (await fetchUpstream(UPSTREAM_ADDONS, 'stream', epId)).map(s => ({
         ...s,
         behaviorHints: { ...s.behaviorHints, bingeGroup: 'scs-binge' }
     }));
     console.log(`Streams for ${epId}: ${streams.length} from ${UPSTREAM_ADDONS.length} upstream(s)`);
     return { streams };
+});
+
+// Subtitle addons only accept tt ids, and Nuvio matches them against the item id
+// (scs:...), so it never asks them for our items; Stremio does the same for binge
+// videos. Serve subtitles ourselves. The id is tt...:s:e (Nuvio, regular catalog)
+// or scs:tt...:s:e (binge).
+addon.defineSubtitlesHandler(async ({ id, extra }) => {
+    const epId = id.replace(/^scs:/, '');
+    if (!epId.startsWith('tt')) return { subtitles: [] };
+    const subtitles = await fetchUpstream(SUBTITLE_ADDONS, 'subtitles', epId, extra);
+    console.log(`Subtitles for ${epId}: ${subtitles.length} from ${SUBTITLE_ADDONS.length} upstream(s)`);
+    return { subtitles };
 });
 
 // ======================== EXPRESS SERVER ========================

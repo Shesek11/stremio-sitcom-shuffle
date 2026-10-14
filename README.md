@@ -71,6 +71,7 @@ the project dir first, then `~/.env`, so config survives redeploys):
 | `CRON_SCHEDULE`        | no       | Cron expression for the data refresh (default `0 */6 * * *`) |
 | `PORT`                 | no       | HTTP port (default `3020`)                               |
 | `UPSTREAM_ADDONS`      | no       | Comma-separated stream addon base URLs, priority order (default `https://torrentio.strem.fun`) |
+| `SUBTITLE_ADDONS`      | no       | Comma-separated subtitle addon base URLs (default OpenSubtitles v3, Wizdom, Ktuvit) |
 
 
 ### Run
@@ -98,6 +99,7 @@ http://<your-host>:<port>/manifest.json
 | `/catalog/...`        | Shuffled episode catalog (re-shuffles on each fresh open)      |
 | `/meta/...`           | Episode metadata                                               |
 | `/stream/...`         | Streams for binge episodes (aggregated from `UPSTREAM_ADDONS`); empty otherwise |
+| `/subtitles/...`      | Subtitles for this addon's items (aggregated from `SUBTITLE_ADDONS`) |
 | `/`                   | Health check (used by TV clients)                              |
 | `/reshuffle`          | Manually trigger a full Trakt fetch + shuffle (returns count)  |
 

@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Subtitles for this addon's items.** Subtitle addons only accept `tt` ids, and Nuvio
+  matches them against the item id (`scs:...`), so it never asked them for our episodes
+  (Stremio did the same for binge videos) and there were no subtitles at all. The addon
+  now declares a `subtitles` resource and aggregates `SUBTITLE_ADDONS` (default
+  OpenSubtitles v3, Wizdom, Ktuvit), forwarding `extra` (filename/videoHash) for better
+  matching. Streams and subtitles share one upstream fetch helper. Manifest `25.1.0`.
 - **Hebrew fallback for Israeli shows.** Where Trakt/TMDB have no English text, episode
   names and overviews come from TMDB in Hebrew (`he-IL`); placeholder names like
   "Episode 5" are replaced by the real title. Shows whose TMDB original language is
