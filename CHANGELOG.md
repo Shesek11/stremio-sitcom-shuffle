@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Catalog-only MyTrakt wrapper.** Nuvio cannot disable a single resource of an addon,
+  and MyTrakt Sync also registers as a stream/subtitles source (returning nothing). With
+  `MYTRAKT_URL` set, the server exposes MyTrakt's manifest with only `catalog`+`meta`
+  and 302-redirects every other request to the real addon. The mount path is
+  `/mt-<sha256(MYTRAKT_URL)[0..20]>` so the user's Trakt catalogs aren't reachable by
+  guessing a fixed path.
+
 ### Changed
 
 - Default `SUBTITLE_ADDONS` now also includes K&W-Hub (ktuvit-latest-nuvio), which

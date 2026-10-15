@@ -72,6 +72,7 @@ the project dir first, then `~/.env`, so config survives redeploys):
 | `PORT`                 | no       | HTTP port (default `3020`)                               |
 | `UPSTREAM_ADDONS`      | no       | Comma-separated stream addon base URLs, priority order (default `https://torrentio.strem.fun`; production uses Hebrew Sources + the self-hosted AIOStreams/TorBox manifest) |
 | `SUBTITLE_ADDONS`      | no       | Comma-separated subtitle addon base URLs (default OpenSubtitles v3, Wizdom, Ktuvit, K&W-Hub) |
+| `MYTRAKT_URL`          | no       | Personal MyTrakt Sync addon URL; enables a catalog-only wrapper at `/mt-<hash>/manifest.json` |
 
 
 ### Run

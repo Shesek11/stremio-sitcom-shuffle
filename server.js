@@ -518,6 +518,37 @@ app.use((req, res, next) => {
     next();
 });
 
+// Catalog-only wrapper for MyTrakt: Nuvio can't disable one resource of an
+// addon, so serve MyTrakt's manifest without stream/subtitles/search (it
+// returns nothing there and only slows source lookup). Every other request
+// redirects to the real addon. MYTRAKT_URL is the user's personal addon URL.
+const MYTRAKT_URL = (process.env.MYTRAKT_URL || '').replace(/\/manifest\.json$/, '').replace(/\/+$/, '');
+// Unguessable mount path derived from the private URL, so strangers can't reach
+// the user's Trakt catalogs (watch history) through this public server.
+const MYTRAKT_PATH = MYTRAKT_URL &&
+    `/mt-${require('crypto').createHash('sha256').update(MYTRAKT_URL).digest('hex').slice(0, 20)}`;
+if (MYTRAKT_URL) {
+    app.get(`${MYTRAKT_PATH}/manifest.json`, async (req, res) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        try {
+            const r = await fetch(`${MYTRAKT_URL}/manifest.json`, { signal: AbortSignal.timeout(15000) });
+            if (!r.ok) throw new Error(`HTTP ${r.status}`);
+            const m = await r.json();
+            m.id = `${m.id}.catalogs`;
+            m.name = `${m.name} (catalogs)`;
+            m.resources = m.resources.filter(r2 => ['catalog', 'meta'].includes(r2.name || r2));
+            res.json(m);
+        } catch (e) {
+            console.error('MyTrakt manifest failed:', e.message);
+            res.status(502).json({ error: 'MyTrakt unavailable' });
+        }
+    });
+    app.get(`${MYTRAKT_PATH}/*`, (req, res) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.redirect(302, MYTRAKT_URL + req.url.slice(MYTRAKT_PATH.length));
+    });
+}
+
 // Mount the SDK router (handles manifest, catalog, meta, stream, CORS)
 const addonInterface = addon.getInterface();
 app.use('/', getRouter(addonInterface));
