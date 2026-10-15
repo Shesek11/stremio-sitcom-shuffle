@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Binge prefetch.** When a binge episode's streams are requested, the server warms the
+  next episode's streams and subtitles in the background (60s timeout). First lookups on
+  Telegram/debrid upstreams can take up to ~30s, but upstreams cache them, so autoplay
+  finds the next episode's sources instantly.
 - **Catalog-only MyTrakt wrapper.** Nuvio cannot disable a single resource of an addon,
   and MyTrakt Sync also registers as a stream/subtitles source (returning nothing). With
   `MYTRAKT_URL` set, the server exposes MyTrakt's manifest with only `catalog`+`meta`

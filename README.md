@@ -32,7 +32,8 @@ The addon ships **two catalogs**:
   aggregator: it queries the upstream addons listed in `UPSTREAM_ADDONS` (priority
   order) and tags every stream with one `bingeGroup`, so with Stremio's *Play next
   episode* setting on, playback continues hands-free — the top stream of each next
-  episode is auto-selected, no source-selection screen between episodes.
+  episode is auto-selected, no source-selection screen between episodes. While one episode plays, the server prefetches
+  the next episode's streams and subtitles so slow first lookups don't stall autoplay.
 
 ### Fair shuffle algorithm
 

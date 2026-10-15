@@ -450,14 +450,14 @@ const SUBTITLE_ADDONS = addonList(process.env.SUBTITLE_ADDONS || [
 
 // Fetch one resource (stream/subtitles) for a real imdb episode id from every
 // upstream addon in parallel; results stay in priority order, failures are skipped.
-async function fetchUpstream(bases, resource, epId, extra) {
+async function fetchUpstream(bases, resource, epId, extra, timeoutMs = 15000) {
     // The id comes from the request; only a real episode id may reach the upstream URL.
     if (!/^tt\d+:\d+:\d+$/.test(epId)) return [];
     const extraPath = extra && Object.keys(extra).length ? `/${new URLSearchParams(extra)}` : '';
     const results = await Promise.all(bases.map(async base => {
         try {
             const res = await fetch(`${base}/${resource}/series/${epId}${extraPath}.json`, {
-                signal: AbortSignal.timeout(15000)
+                signal: AbortSignal.timeout(timeoutMs)
             });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return (await res.json())[resource === 'stream' ? 'streams' : 'subtitles'] || [];
@@ -485,6 +485,17 @@ addon.defineStreamHandler(async ({ type, id }) => {
         behaviorHints: { ...s.behaviorHints, bingeGroup: 'scs-binge' }
     }));
     console.log(`Streams for ${epId}: ${streams.length} from ${UPSTREAM_ADDONS.length} upstream(s)`);
+
+    // Warm the next binge episode in the background: first lookups are slow
+    // (Telegram/debrid searches, up to ~30s) but upstreams cache them, so by the
+    // time autoplay reaches the next episode its sources answer instantly.
+    const i = bingeCache.findIndex(ep => `${ep.showIds.imdb}:${ep.season}:${ep.episode}` === epId);
+    const next = i >= 0 && bingeCache[i + 1];
+    if (next) {
+        const nextId = `${next.showIds.imdb}:${next.season}:${next.episode}`;
+        fetchUpstream(UPSTREAM_ADDONS, 'stream', nextId, undefined, 60000).catch(() => {});
+        fetchUpstream(SUBTITLE_ADDONS, 'subtitles', nextId, undefined, 60000).catch(() => {});
+    }
     return { streams };
 });
 
