@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [26.0.0] - 2026-10-15
+
+**Breaking:** Trakt OAuth is gone. The Trakt list must be public, and only
+`TRAKT_CLIENT_ID` (from a new-portal app) is used; `TRAKT_CLIENT_SECRET`,
+`TRAKT_ACCESS_TOKEN` and `TRAKT_REFRESH_TOKEN` are ignored.
+
 ### Added
 
 - **Binge prefetch.** When a binge episode's streams are requested, the server warms the

@@ -305,7 +305,7 @@ const CATALOG_PAGE_SIZE = 100;
 
 const addon = new addonBuilder({
     id: 'community.sitcom.shuffle',
-    version: '25.1.0',
+    version: '26.0.0',
     name: 'Sitcom Shuffle',
     description: 'Random shuffled episodes from your favorite sitcoms',
     catalogs: [{

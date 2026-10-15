@@ -1,6 +1,6 @@
 {
   "name": "stremio-sitcom-shuffle",
-  "version": "23.0.0",
+  "version": "26.0.0",
   "description": "Stremio addon for shuffled sitcom episodes from Trakt lists",
   "main": "server.js",
   "scripts": {
