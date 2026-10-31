@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Same few episodes per show kept returning in the first rounds.** Every open drew a
+  fresh random order with no memory of what was already shown; with 30 shows the first
+  page holds ~3 rounds, so a 10-episode show showed a third of itself on every open and
+  repeats were constant. Each show now keeps a persisted deck (`~/data/decks.json`):
+  opens deal not-yet-shown episodes first, and a show repeats only after all its
+  episodes were dealt. Round-robin is unchanged. Measured on live data over 10 opens:
+  page-1 repeats dropped from 244 to 124 (the remainder is small shows cycling, the
+  minimum possible) and distinct episodes seen rose from 756 to 876. Requests within
+  2 minutes share one deal, so the home row, "see all" and the binge tile agree.
+
 ## [26.0.0] - 2026-10-15
 
 **Breaking:** Trakt OAuth is gone. The Trakt list must be public, and only

@@ -204,34 +204,53 @@ function shuffleArray(array) {
     return shuffled;
 }
 
-function fairShuffle(episodes) {
-    const shows = {};
-    episodes.forEach(ep => {
-        const showId = ep.showIds?.slug || 'unknown';
-        if (!shows[showId]) shows[showId] = [];
-        shows[showId].push(ep);
-    });
-
-    Object.keys(shows).forEach(id => {
-        shows[id] = shuffleArray(shows[id]);
-    });
-
+// Round-robin: each round takes the next episode of every show, in a random show
+// order per round, so consecutive items come from different shows.
+function roundRobin(queues) {
+    const lists = Object.values(queues).map(q => [...q]);
     const result = [];
-    const showKeys = Object.keys(shows);
-
-    while (showKeys.length > 0) {
-        const roundOrder = shuffleArray([...showKeys]);
-        for (const showId of roundOrder) {
-            if (shows[showId].length > 0) {
-                result.push(shows[showId].pop());
-            } else {
-                const idx = showKeys.indexOf(showId);
-                if (idx > -1) showKeys.splice(idx, 1);
-            }
-        }
+    while (lists.some(l => l.length)) {
+        for (const l of shuffleArray(lists)) if (l.length) result.push(l.shift());
     }
-
     return result;
+}
+
+// Per-show "deck", persisted to disk. A fresh random draw on every open has no
+// memory, so the first rounds kept repeating episodes already shown (a 10-episode
+// show shows a third of itself every open). Instead each show keeps a queue of
+// not-yet-dealt episodes: an open deals the episodes that fill the first page and
+// moves them to the back, so a show repeats only after all its episodes were dealt.
+const DECKS_FILE = path.join(DATA_DIR, 'decks.json');
+let decks = {};
+try { decks = JSON.parse(fs.readFileSync(DECKS_FILE, 'utf8')); } catch {}
+
+function dealOrder() {
+    const shows = {};
+    loadEpisodes().filter(ep => ep?.showIds?.imdb).forEach(ep => (shows[ep.showIds.imdb] ??= []).push(ep));
+    const keyOf = ep => `${ep.season}:${ep.episode}`;
+    const queues = {};
+    for (const [id, eps] of Object.entries(shows)) {
+        const byKey = Object.fromEntries(eps.map(ep => [keyOf(ep), ep]));
+        const undealt = (decks[id] || []).filter(k => byKey[k]);
+        const inDeck = new Set(undealt);
+        // Undealt first; dealt (and newly aired) episodes go to the back, reshuffled.
+        queues[id] = [...undealt, ...shuffleArray(Object.keys(byKey).filter(k => !inDeck.has(k)))].map(k => byKey[k]);
+    }
+    const order = roundRobin(queues);
+    // Advance each deck by exactly what landed on the first page.
+    const shown = {};
+    order.slice(0, CATALOG_PAGE_SIZE).forEach(ep => shown[ep.showIds.imdb] = (shown[ep.showIds.imdb] || 0) + 1);
+    for (const [id, q] of Object.entries(queues)) decks[id] = q.slice(shown[id] || 0).map(keyOf);
+    fs.writeFileSync(DECKS_FILE, JSON.stringify(decks));
+    return order;
+}
+
+// Home row, "see all" and the binge tile arrive as separate requests of one
+// visit: serve them one deal instead of burning a new deal per request.
+let dealt = { at: 0, order: [] };
+function currentOrder() {
+    if (Date.now() - dealt.at > 2 * 60 * 1000) dealt = { at: Date.now(), order: dealOrder() };
+    return dealt.order;
 }
 
 // ======================== DATA PIPELINE ========================
@@ -281,11 +300,11 @@ async function fetchAndShuffle() {
     // Keep the last good data if Trakt returned nothing (outage / API change).
     if (allEpisodes.length === 0) throw new Error('Fetched 0 episodes, keeping existing data.');
 
-    const shuffled = fairShuffle(allEpisodes);
-    fs.writeFileSync(EPISODES_FILE, JSON.stringify(shuffled));
+    // Order is dealt per request (dealOrder), so the stored list needs no shuffle.
+    fs.writeFileSync(EPISODES_FILE, JSON.stringify(allEpisodes));
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`=== Shuffle complete: ${shuffled.length} episodes in ${elapsed}s ===`);
-    return shuffled.length;
+    console.log(`=== Shuffle complete: ${allEpisodes.length} episodes in ${elapsed}s ===`);
+    return allEpisodes.length;
 }
 
 function loadEpisodes() {
@@ -323,19 +342,18 @@ const addon = new addonBuilder({
     idPrefixes: ['scs']
 });
 
-// Re-shuffle on each fresh catalog open so the user sees a different mix every
-// time, instead of the same first few episodes. The cron only fetches data
-// (every 6h); shuffling here decouples variety from that slow refresh.
+// Deal a new order on each fresh catalog open (see dealOrder). The cron only
+// fetches data (every 6h); dealing here decouples variety from that slow refresh.
 let catalogCache = [];
 
 // Binge series: the whole shuffle as ONE series so Stremio autoplays the next
-// episode. The order is re-shuffled each time the binge catalog is opened (same
-// "fresh mix every time" idea as the regular catalog), and cached so the order
-// stays stable while you watch. meta handler reads this cache.
+// episode. Uses the same deal as the regular catalog, refreshed when the binge
+// catalog is opened, and cached so the order stays stable while you watch. meta
+// handler reads this cache.
 let bingeCache = [];
 
 function buildBingeOrder() {
-    bingeCache = fairShuffle(loadEpisodes().filter(ep => ep?.showIds?.imdb));
+    bingeCache = currentOrder();
     return bingeCache;
 }
 
@@ -357,7 +375,7 @@ addon.defineCatalogHandler(({ type, id, extra }) => {
     // skip=0 marks the start of a new scroll: re-shuffle and cache the order.
     // skip>0 pages through the cached order so pagination stays consistent.
     if (skip === 0 || catalogCache.length === 0) {
-        catalogCache = fairShuffle(loadEpisodes().filter(ep => ep?.showIds?.imdb));
+        catalogCache = currentOrder();
     }
 
     const metas = catalogCache

@@ -14,8 +14,8 @@ it so you keep discovering different episodes instead of seeing the same few.
    fill gaps for Israeli shows), and stores the result in `~/data/episodes.json`.
    Runs every 6 hours by default.
 2. **Shuffle (fast, on demand).** The shuffle is **decoupled** from the fetch. Every
-   time the catalog is opened (`skip=0`), the stored episodes are re-shuffled fresh,
-   so the top of the list changes on each open. Scrolling further (`skip>0`) reads
+   time the catalog is opened (`skip=0`), a new order is dealt from per-show decks
+   (see below), so the top of the list shows episodes you haven't seen yet. Scrolling further (`skip>0`) reads
    from a cached order so pagination stays consistent during a single scroll.
 
 ### Two ways to watch
@@ -37,11 +37,14 @@ The addon ships **two catalogs**:
 
 ### Fair shuffle algorithm
 
-`fairShuffle` groups episodes by show, shuffles each show's episodes internally,
-then emits them round-robin: each round takes one episode from every show (in a
-randomized show order), so consecutive items come from different shows. Because the
-shuffle now runs on every catalog open, you progressively reach all episodes of
-every show rather than being stuck on the same first few.
+Episodes are emitted round-robin: each round takes the next episode of every show
+(in a randomized show order), so consecutive items come from different shows.
+
+Each show's next episodes come from a **deck** persisted in `~/data/decks.json`
+(`dealOrder`): a queue of episodes not yet dealt. Every catalog open deals the
+episodes that land on the first page and moves them to the back, so a show repeats
+an episode only after all of its episodes were shown. Requests within 2 minutes
+(home row, "see all", binge tile) share one deal. Delete `decks.json` to reset.
 
 ## Setup
 
